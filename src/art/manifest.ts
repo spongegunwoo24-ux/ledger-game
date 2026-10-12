@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { CHARACTER_KEYS, charTexKey, generateCharacters, portraitKey } from './characters';
 import { CURIO_IDS, generateItems } from './items';
 import { generateBoats } from './boats';
+import { fishTexKey, generateFish } from './fish';
+import { FISH } from '../data/fish';
 import { TEX_SCALE } from './pen';
 
 /**
@@ -41,6 +43,7 @@ export const TEXTURE_KEYS: string[] = [
   'bin_bucket',
   'bin_barrel',
   'bin_crate',
+  'bin_icebox',
   'fx_splash',
   'fx_dot',
   'fx_coin',
@@ -59,6 +62,9 @@ export const TEXTURE_KEYS: string[] = [
   'sc_palm',
   'sc_buoy',
   'sc_lighthouse',
+  ...FISH.map((f) => fishTexKey(f.id)),
+  'it_goldshrimp',
+  'fx_dark_hole',
 ];
 
 /** Keys that have a hand-drawn PNG in public/art/. Empty until art arrives. */
@@ -74,6 +80,7 @@ export function generateAllTextures(scene: Phaser.Scene): void {
   generateCharacters(scene);
   generateItems(scene);
   generateBoats(scene);
+  generateFish(scene);
   // restore replaced textures over the procedural ones
   for (const key of REPLACEMENTS) {
     if (!keep.has(key)) continue;

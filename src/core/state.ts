@@ -1,7 +1,7 @@
 import { TUNING } from '../config/tuning';
 import type { FeelId, GroundId, Segment } from './types';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export type FlagValue = boolean | number | string;
 
@@ -12,6 +12,12 @@ export interface CatchHold {
   large: number;
   /** count */
   crabs: number;
+  /** [변경 1] fish on ice: count and total cannery value */
+  fishCount: number;
+  fishValue: number;
+  golden: number;
+  /** combo + freshness bonus in dollars, paid with the sale */
+  bonus: number;
 }
 
 export interface DayStats {
@@ -53,10 +59,16 @@ export interface GameState {
   segment: Segment;
   money: number;
   debt: number;
+  /** [변경 1] minutes since midnight (04:00 = 240) */
+  time: number;
   /** amount paid toward the debt since last Friday (includes prepayments) */
   paidThisWeek: number;
-  zeroStreak: number;
-  extensionUsed: boolean;
+  /** late fees added to the debt so far */
+  fees: number;
+  /** Friday shortfalls this season (2 = repossession) */
+  shortfalls: number;
+  /** a Friday shortfall to be paid (with fee) by Monday 17:00 */
+  overdue: { amount: number; deadlineDay: number } | null;
   payments: PaymentRecord[];
   hold: CatchHold;
   flags: Record<string, FlagValue>;
@@ -85,6 +97,18 @@ export interface GameState {
   week: WeekStats;
   totals: { earned: number; stolen: number; lbs: number; turtlesSaved: number };
   theSpotAttempts: number;
+  /** [변경 1] bait counts by bait id */
+  bait: Record<string, number>;
+  /** caught fish records: species id → { count, best size in inches } */
+  fishLog: Record<string, { count: number; best: number; firstDay: number }>;
+  /** quest id shown large in the tracker */
+  trackedQuest: string | null;
+  /** "지난 이야기": event ids already seen or skipped, with day */
+  story: { id: string; day: number; skipped: boolean }[];
+  /** times Ledger was fed today/treated (guide accuracy) */
+  ledgerFed: number;
+  /** sorting combo best (for fun stats) */
+  bestCombo: number;
 }
 
 export const FEELING_START: Record<FeelId, number> = {
@@ -124,11 +148,13 @@ export function newGame(seed = Math.floor(Math.random() * 1e9)): GameState {
     segment: 'morning',
     money: 40,
     debt: TUNING.debt.total,
+    time: 10 * 60,
     paidThisWeek: 0,
-    zeroStreak: 0,
-    extensionUsed: false,
+    fees: 0,
+    shortfalls: 0,
+    overdue: null,
     payments: [],
-    hold: { small: 0, medium: 0, large: 0, crabs: 0 },
+    hold: { small: 0, medium: 0, large: 0, crabs: 0, fishCount: 0, fishValue: 0, golden: 0, bonus: 0 },
     flags: {},
     feelings: { ...FEELING_START },
     giftDay: {},
@@ -154,6 +180,12 @@ export function newGame(seed = Math.floor(Math.random() * 1e9)): GameState {
     week: emptyWeekStats(),
     totals: { earned: 0, stolen: 0, lbs: 0, turtlesSaved: 0 },
     theSpotAttempts: 0,
+    bait: { shrimp: 10 },
+    fishLog: {},
+    trackedQuest: null,
+    story: [],
+    ledgerFed: 0,
+    bestCombo: 0,
   };
 }
 
@@ -175,7 +207,7 @@ export function setFlag(s: GameState, key: string, value: FlagValue = true): voi
 }
 
 export function holdIsEmpty(h: CatchHold): boolean {
-  return h.small + h.medium + h.large + h.crabs <= 0;
+  return h.small + h.medium + h.large + h.crabs + h.fishCount + h.golden <= 0;
 }
 
 export function hasItem(s: GameState, id: string): boolean {

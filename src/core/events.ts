@@ -65,6 +65,8 @@ export type Step =
   | { t: 'letter'; title?: string; text: string }
   | { t: 'shake'; who: CharId }
   | { t: 'notes'; who: CharId; on: boolean }
+  /** [변경 1] a big official paper: notice, warning letter, repayment table */
+  | { t: 'notice'; title: string; lines: string[]; tone?: 'official' | 'red' }
   | { t: 'face'; who: CharId; dir: 1 | -1 };
 
 export interface Trigger {
@@ -93,6 +95,8 @@ export type NextScene =
 
 export interface EventDef {
   id: string;
+  /** [변경 1] 1–2 Korean sentences shown in the notebook's "지난 이야기" (and after a skip) */
+  summary: string;
   trigger: Trigger;
   bg: BackdropKey;
   tint?: Segment;
@@ -145,6 +149,9 @@ export function collectTexts(steps: Step[], out: string[] = []): string[] {
         break;
       case 'letter':
         out.push(st.text);
+        break;
+      case 'notice':
+        out.push(st.title, ...st.lines);
         break;
       case 'card':
         out.push(st.title);

@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { resetClockHolds } from './clock';
 
 /** Logical resolution. All game code works in these coordinates. */
 export const W = 1280;
@@ -25,6 +26,7 @@ export function initView(scene: Phaser.Scene): void {
   cam.setOrigin(0, 0);
   cam.setZoom(R);
   cam.setScroll(0, 0);
+  resetClockHolds();
 }
 
 /** ?test=1 — headless play-testing helpers (instant text). */

@@ -4,7 +4,7 @@ import { weekOf } from '../core/calendar';
 import type { Step } from '../core/events';
 import { G } from '../core/game';
 import { initView } from '../core/view';
-import { fridayPayment, gusCanOffer, dueNow } from '../systems/economy';
+import { fridayPayment, gusCanOffer, dueNow, overdueDeadline } from '../systems/economy';
 import { makeRunCtx, runSteps, type RunCtx } from '../ui/runner';
 import { Stage } from '../ui/Stage';
 import { endSegment, enterSegment, eventById, type CutsceneData } from './director';
@@ -36,6 +36,8 @@ export class CutsceneScene extends Phaser.Scene {
     const s = G.state;
     if (d.special === 'payment') {
       if (await this.payment()) return;
+    } else if (d.special === 'deadline') {
+      if (await this.deadline()) return;
     } else if (d.eventId) {
       const ev = eventById(d.eventId);
       if (ev) {
@@ -45,6 +47,7 @@ export class CutsceneScene extends Phaser.Scene {
         if (ev.bg === 'dock' || ev.bg === 'dockDusk' || ev.bg === 'sea' || ev.bg === 'lighthouse') ambientWaves(true, 0.04);
         else ambientWaves(false);
         await runSteps(this.ctx, ev.steps);
+        if (!s.story.some((x) => x.id === ev.id)) s.story.push({ id: ev.id, day: s.day, skipped: this.ctx.skipped });
         if (ev.next) {
           this.finish(() => {
             if (ev.next?.scene === 'Trawl') this.scene.start('Trawl', { ground: ev.next.ground, tutorial: ev.next.tutorial });
@@ -82,8 +85,7 @@ export class CutsceneScene extends Phaser.Scene {
     });
   }
 
-  /** Friday payment at the end of the afternoon (no slot cost). */
-  /** Returns true when it already moved on to another scene. */
+  /** [변경 1] Friday 17:00 payment. Returns true when it already moved on to another scene. */
   private async payment(): Promise<boolean> {
     const s = G.state;
     s.flags[`paid_${s.day}`] = true;
@@ -91,11 +93,12 @@ export class CutsceneScene extends Phaser.Scene {
     const pre: Step[] = [];
     if (gusCanOffer(s)) {
       s.flags.gusCanOffered = true;
+      const short = Math.max(0, dueNow(s) - s.money);
       pre.push(
         { t: 'bg', key: 'dock', tint: 'afternoon' },
         { t: 'enter', who: 'eli', at: { x: 520, y: 552 } },
         { t: 'enter', who: 'gus', at: { x: 760, y: 552 }, face: -1 },
-        { t: 'narrate', text: '은행 가는 길. 거스가 부두 끝에서 기다리고 있다. 손에 커피 깡통을 들고.' },
+        { t: 'narrate', text: `은행 가는 길. 이번 주 돈이 $${short.toFixed(0)} 모자란다. 거스가 부두 끝에서 기다리고 있다. 손에 커피 깡통을 들고.` },
         { t: 'say', who: 'gus', text: '…' },
         { t: 'think', text: '깡통 안에 지폐가 말려 있다. 꼬깃꼬깃한 일 달러, 오 달러짜리들.' },
         { t: 'say', who: 'gus', text: '…세지 마. 백오십이다.' },
@@ -117,60 +120,60 @@ export class CutsceneScene extends Phaser.Scene {
             },
           ],
         },
+        { t: 'exit', who: 'gus' },
       );
     }
     pre.push(
       { t: 'bg', key: 'bank', tint: 'afternoon' },
-      { t: 'exit', who: 'gus' },
       { t: 'enter', who: 'eli', at: { x: 470, y: 552 } },
       { t: 'enter', who: 'priya', at: { x: 700, y: 552 }, face: -1 },
+      { t: 'narrate', text: '금요일 오후 다섯 시. 은행.' },
     );
     this.stage.setBackdrop('bank', 'afternoon');
     await runSteps(this.ctx, pre);
 
-    const due = dueNow(s);
     const r = fridayPayment(s);
     const week = weekOf(s.day);
     const post: Step[] = [];
-    if (due <= 0 && r.paid <= 0) {
+    if (r.due <= 0) {
       post.push({ t: 'say', who: 'priya', text: '이번 주 몫은 이미 들어와 있어요. 미리 내셨잖아요.' });
-      post.push({ t: 'say', who: 'priya', text: '이렇게만 가면 배는 일라이 씨 거예요.' });
     } else if (r.short <= 0) {
       post.push({ t: 'sfx', id: 'cash' });
-      post.push({ t: 'say', who: 'priya', text: `$${r.paid.toFixed(0)}, 확인했어요. ${week}주차 납부 끝.` });
+      post.push({ t: 'say', who: 'priya', text: `$${r.paid.toFixed(0)}, 확인했어요. ${week}주차 상환 끝.` });
       post.push(
         week === 1
           ? { t: 'say', who: 'priya', text: '첫 주를 넘기는 분들이 생각보다 적어요. 잘하셨어요.' }
-          : { t: 'say', who: 'priya', text: '수고하셨어요. 다음 주도 금요일 오후예요.' },
-      );
-    } else if (r.extensionGranted) {
-      if (r.paid > 0) post.push({ t: 'sfx', id: 'cash' });
-      post.push(
-        { t: 'say', who: 'priya', text: `이번 주는 $${r.short.toFixed(0)} 모자라네요.` },
-        { t: 'think', text: '압류 얘기가 나올 줄 알았다.' },
-        { t: 'say', who: 'priya', text: '…한 주 미뤄 드릴게요. 모자란 건 다음 주에 같이 내시면 돼요.' },
-        { t: 'say', who: 'eli', text: '그래도 돼요? 규정이 있을 텐데.' },
-        { t: 'say', who: 'priya', text: '대니얼이라면 이렇게 했을 거예요.' },
-        { t: 'think', text: '대니얼. 처음 듣는 이름이다. 물어보기 전에 프리야는 서류를 덮었다.' },
-        { t: 'effect', effects: [{ flag: 'heardDanielName' }] },
-      );
-    } else if (r.paid > 0) {
-      post.push(
-        { t: 'sfx', id: 'cash' },
-        { t: 'say', who: 'priya', text: `$${r.paid.toFixed(0)} 받았어요. $${r.short.toFixed(0)}은 다음 주로 넘어가요.` },
-        { t: 'say', who: 'priya', text: '조금이라도 내시면 은행은 기다려요. 한 푼도 없는 주가 세 번 이어지면 안 돼요.' },
+          : { t: 'say', who: 'priya', text: '수고하셨어요. 다음 주도 금요일 오후 다섯 시예요.' },
       );
     } else if (r.repossess) {
+      if (r.paid > 0) post.push({ t: 'sfx', id: 'cash' });
       post.push(
-        { t: 'say', who: 'priya', text: '…세 주째예요. 죄송해요. 이번엔 저도 막을 수가 없어요.' },
-        { t: 'say', who: 'priya', text: '월요일에 본사 사람들이 메리 루를 가지러 와요.' },
+        { t: 'say', who: 'priya', text: `$${r.short.toFixed(0)}이 모자라요.` },
+        { t: 'say', who: 'priya', text: '…두 번째예요. 죄송해요. 이번엔 저도 막을 수가 없어요.' },
+        { t: 'say', who: 'priya', text: '본사에서 내일 아침에 메리 루를 가지러 와요.' },
       );
     } else {
+      if (r.paid > 0) post.push({ t: 'sfx', id: 'cash' });
       post.push(
-        { t: 'say', who: 'priya', text: '이번 주는… 한 푼도 못 받았어요.' },
-        r.warning >= 2
-          ? { t: 'say', who: 'priya', text: '두 주 연속이에요. 다음 금요일에도 0이면 정말 압류예요. 몇 달러라도 가져오세요.' }
-          : { t: 'say', who: 'priya', text: '세 주 연속으로 0이면 은행이 배를 가져가요. 아직은 괜찮아요. 아직은.' },
+        { t: 'say', who: 'priya', text: `이번 주 상환액에서 $${r.short.toFixed(0)}이 모자라요.` },
+        { t: 'say', who: 'priya', text: '…규정상으로는 바로 압류 절차예요.' },
+        { t: 'sfx', id: 'paper' },
+        {
+          t: 'notice',
+          title: '연체 경고장',
+          lines: [
+            `미납액 $${r.short.toFixed(2)} + 연체료(10%) $${r.fee.toFixed(2)}`,
+            `합계 $${r.overdue.toFixed(2)}을(를) 월요일 오후 5시까지 납부하십시오.`,
+            '기한 내 미납 시, 또는 금요일 상환이 다시 부족할 시',
+            '메리 루 호는 즉시 압류됩니다.',
+          ],
+          tone: 'red',
+        },
+        { t: 'say', who: 'eli', text: '월요일까지 기다려 주는 거예요? 규정이 있다면서요.' },
+        { t: 'say', who: 'priya', text: '대니얼이라면 이렇게 했을 거예요.' },
+        { t: 'think', text: '대니얼. 처음 듣는 이름이다. 물어보기 전에 프리야는 서류를 덮었다.' },
+        { t: 'say', who: 'priya', text: '그런데 두 번째는 저도 못 막아요. 정말로요.' },
+        { t: 'effect', effects: [{ flag: 'heardDanielName' }] },
       );
     }
     if (r.paidOff) {
@@ -180,6 +183,39 @@ export class CutsceneScene extends Phaser.Scene {
       );
     }
     await runSteps(this.ctx, post);
+    if (r.repossess) {
+      s.flags.repossessed = true;
+      this.finish(() => this.scene.start('Ending', { id: 'repossess' }));
+      return true;
+    }
+    return false;
+  }
+
+  /** [변경 1] Monday 17:00: the overdue amount must be in. */
+  private async deadline(): Promise<boolean> {
+    const s = G.state;
+    s.flags[`deadline_${s.day}`] = true;
+    const r = overdueDeadline(s);
+    if (!r) return false;
+    this.stage.setBackdrop('bank', 'afternoon');
+    const steps: Step[] = [
+      { t: 'enter', who: 'eli', at: { x: 470, y: 552 } },
+      { t: 'enter', who: 'priya', at: { x: 700, y: 552 }, face: -1 },
+      { t: 'narrate', text: '월요일 오후 다섯 시. 연체금 마감.' },
+    ];
+    if (r.paid > 0) steps.push({ t: 'sfx', id: 'cash' });
+    if (r.repossess) {
+      steps.push(
+        { t: 'say', who: 'priya', text: `$${(r.owed - r.paid).toFixed(0)}이 아직 안 들어왔어요.` },
+        { t: 'say', who: 'priya', text: '…죄송해요. 더는 붙잡을 수가 없어요.' },
+      );
+    } else {
+      steps.push(
+        { t: 'say', who: 'priya', text: '연체금 다 들어왔어요. 이번엔 넘어갔어요.' },
+        { t: 'say', who: 'priya', text: '다음 금요일엔… 꼭이요.' },
+      );
+    }
+    await runSteps(this.ctx, steps);
     if (r.repossess) {
       s.flags.repossessed = true;
       this.finish(() => this.scene.start('Ending', { id: 'repossess' }));

@@ -100,10 +100,13 @@ export class MarketScene extends Phaser.Scene {
       ['새우 중', `${h.medium.toFixed(1)} lb`],
       ['새우 대', `${h.large.toFixed(1)} lb`],
       ['게', `${h.crabs}마리`],
+      ['생선', `${h.fishCount}마리 ($${h.fishValue.toFixed(0)})`],
     ];
+    if (h.golden) rows.push(['황금 새우', `${h.golden}마리`]);
+    if (h.bonus > 0) rows.push(['콤보·신선도 보너스', `+$${h.bonus.toFixed(2)}`]);
     rows.forEach(([a, b], i) => {
-      c.add(txt(this, 80, 170 + i * 36, a, { size: 21 }));
-      c.add(txt(this, 470, 170 + i * 36, b, { size: 21, color: '#2d5fa8' }).setOrigin(1, 0));
+      c.add(txt(this, 80, 166 + i * 30, a, { size: 19 }));
+      c.add(txt(this, 470, 166 + i * 30, b, { size: 19, color: '#2d5fa8' }).setOrigin(1, 0));
     });
     const empty = holdIsEmpty(h);
     const cannery = quoteSale(s, 'cannery');
@@ -111,7 +114,7 @@ export class MarketScene extends Phaser.Scene {
     const rosa = quoteSale(s, 'rosa');
     const mk = this.marketOpen();
     const rosaOk = feel(s, 'rosa') >= 60 && rosa.total > 0;
-    let y = 340;
+    let y = 166 + rows.length * 30 + 34;
     const b1 = new Button(this, 275, y, `듀이 트럭에 팔기  $${cannery.total.toFixed(2)}`, () => this.sell('cannery'), {
       w: 400,
       h: 54,

@@ -4,6 +4,7 @@ import type { EventDef } from '../../core/events';
 export const WEEK1_EVENTS: EventDef[] = [
   {
     id: 'W1_FUNERAL',
+    summary: '아버지의 장례식. 온 사람은 거스, 토비, 캘빈뿐이었다. 캘빈은 아버지 사건을 맡았었다며 필요한 게 있으면 말하라고 했다.',
     trigger: { day: 1, segment: 'morning' },
     order: 0,
     bg: 'cemetery',
@@ -65,6 +66,7 @@ export const WEEK1_EVENTS: EventDef[] = [
   },
   {
     id: 'W1_BANK',
+    summary: '은행의 프리야가 빚 4,250달러와 상환 규칙을 설명했다. 매주 금요일 오후 5시까지 갚지 못하면 경고, 두 번째는 메리 루 압류다.',
     trigger: { day: 1, segment: 'morning' },
     order: 1,
     bg: 'bank',
@@ -78,13 +80,35 @@ export const WEEK1_EVENTS: EventDef[] = [
       { t: 'narrate', text: '장례식이 끝나고 한 시간 뒤. 걸프 코스트 저축은행.' },
       { t: 'say', who: 'priya', text: '프리야 파텔이에요. 대출 담당이요. 오늘 같은 날 불러서 죄송해요.' },
       { t: 'say', who: 'priya', text: '메리 루 호 앞으로 잡힌 대출이 4,250달러 남아 있어요.' },
-      { t: 'say', who: 'eli', text: '배를 팔면 되잖아요.' },
-      { t: 'say', who: 'priya', text: '팔아도 못 갚아요. 요즘 중고 새우잡이 배는 값이 바닥이라, 1,500달러도 안 나와요.' },
-      { t: 'say', who: 'priya', text: '방법은 하나예요. 이번 철 10주 동안 직접 새우를 잡아서, 금요일마다 갚는 거요.' },
-      { t: 'say', who: 'priya', text: '첫 주는 250달러. 그다음부터는 매주 500달러씩이에요.' },
+      { t: 'say', who: 'eli', text: '그게 왜 저한테 와요?' },
+      { t: 'say', who: 'priya', text: '아버님이 8년 전에 배 엔진을 고치려고 대출을 받으셨어요. 사건 이후로 한 번도 못 갚으셨고요.' },
+      { t: 'say', who: 'priya', text: '배를 팔아도 1,800달러 정도예요. 나머지 빚은 아드님께 남아요.' },
+      { t: 'say', who: 'eli', text: '…그럼 방법이 없네요.' },
+      { t: 'say', who: 'priya', text: '하나 있어요. 이번 새우잡이 철 10주 동안 직접 배를 몰아서 갚는 거요. 표로 보여 드릴게요.' },
+      {
+        t: 'notice',
+        title: '상환 계획표',
+        lines: [
+          '1주차 · 7일째 금요일까지 ······ $250',
+          '2주차 ~ 9주차 · 매주 금요일까지 ······ $500씩',
+          '합계 $4,250 (10주차는 상환 없음)',
+          '마감: 매주 금요일 오후 5시, 은행 창구',
+          '은행에서는 언제든 미리 갚을 수 있습니다.',
+        ],
+      },
+      {
+        t: 'notice',
+        title: '공식 통지',
+        lines: [
+          '매주 금요일 오후 5시까지 정해진 금액을 내야 합니다.',
+          '기한을 넘기면 한 번은 경고, 두 번째는 메리 루 호 압류입니다.',
+          '압류되면 더 이상 이 마을에 머물 수 없습니다.',
+        ],
+        tone: 'red',
+      },
+      { t: 'say', who: 'priya', text: '경고 때는 남은 돈에 연체료 10%를 붙여서 그다음 월요일 오후 5시까지 내셔야 해요.' },
       { t: 'say', who: 'eli', text: '…저 새우 싫어하는데요.' },
-      { t: 'say', who: 'priya', text: '좋아하실 필요는 없어요. 잡기만 하시면 돼요.' },
-      { t: 'say', who: 'priya', text: '조금이라도 모자라면 다음 주로 넘어가요. 한 푼도 못 내는 주가 세 번 이어지지만 않으면 돼요.' },
+      { t: 'say', who: 'priya', text: '좋아하실 필요는 없어요. 잡기만 하시면 돼요. 첫 주 250달러는 며칠 바다에 나가면 충분해요.' },
       { t: 'say', who: 'priya', text: '부두에 거스 씨가 계실 거예요. 아버님 배에서 30년 일하신 분이요.' },
       { t: 'think', text: '거스. 장례식 맨 뒤에 서 있던 그 영감인가.' },
       { t: 'effect', effects: [{ flag: 'bankIntro' }] },
@@ -92,6 +116,7 @@ export const WEEK1_EVENTS: EventDef[] = [
   },
   {
     id: 'W1_FIRST_TRIP',
+    summary: '아버지 배에서 30년 일한 거스가 "배 팔 거면 상태라도 보고 팔아"라며 첫 출항에 데려갔다. 펠리컨 장부가 난간에 내려앉았다.',
     trigger: { day: 1, segment: 'afternoon' },
     bg: 'dock',
     tint: 'afternoon',
@@ -121,6 +146,7 @@ export const WEEK1_EVENTS: EventDef[] = [
   },
   {
     id: 'W1_HOME_FIRST',
+    summary: '7년 동안 비어 있던 아버지 집에서 첫날 밤을 보냈다.',
     trigger: { day: 1, segment: 'evening' },
     bg: 'homeNight',
     tint: 'evening',
@@ -135,6 +161,7 @@ export const WEEK1_EVENTS: EventDef[] = [
   },
   {
     id: 'W1_FIRST_SALE',
+    summary: '어시장은 "살인마 새우는 안 받아"라며 거절했다. 통조림 공장 트럭 듀이가 반값에 새우를 사 주기로 했다.',
     trigger: { day: 2, segment: 'morning' },
     bg: 'fishMarket',
     tint: 'morning',
@@ -166,6 +193,7 @@ export const WEEK1_EVENTS: EventDef[] = [
   },
   {
     id: 'W1_LETTER_BOX',
+    summary: '침대 밑에서 반송된 아버지의 편지 72통과 재판 기록을 찾았다. 매일 저녁 한 통씩 열거나 태울 수 있다.',
     trigger: { day: 2, segment: 'evening' },
     bg: 'homeNight',
     tint: 'evening',
@@ -187,6 +215,7 @@ export const WEEK1_EVENTS: EventDef[] = [
   },
   {
     id: 'W1_GRAFFITI',
+    summary: '메리 루에 누군가 KILLER라고 써 놓았다. 캘빈이 페인트를 들고 와서 함께 덮어 칠했다.',
     trigger: { day: 3, segment: 'dawn' },
     bg: 'dock',
     tint: 'dawn',
@@ -237,6 +266,7 @@ export const WEEK1_EVENTS: EventDef[] = [
   },
   {
     id: 'W1_GRAFFITI_BEER',
+    summary: '저녁에 부두 끝에서 캘빈과 맥주를 마셨다. 캘빈은 아버지가 바다 하나는 정말 잘 알았다고 했다.',
     trigger: { day: 3, segment: 'evening' },
     bg: 'dockDusk',
     tint: 'evening',
@@ -261,6 +291,7 @@ export const WEEK1_EVENTS: EventDef[] = [
   },
   {
     id: 'W1_CALVIN_LIGHTHOUSE',
+    summary: '캘빈이 지나가며 "등대 앞은 가지 마요. 거긴 고기가 하나도 없어."라고 일러 주었다.',
     trigger: { day: 4, segment: 'morning' },
     bg: 'dock',
     tint: 'morning',
@@ -279,6 +310,7 @@ export const WEEK1_EVENTS: EventDef[] = [
   },
   {
     id: 'W1_LOGBOOK_X',
+    summary: '아버지 항해 일지 첫 장: "등대 앞 그 자리에는 절대 그물을 내리지 마라." 해도에는 X 표시, 7년 전 늦여름 한 장은 찢겨 있었다.',
     trigger: { day: 4, segment: 'evening' },
     bg: 'homeNight',
     tint: 'evening',
@@ -301,6 +333,7 @@ export const WEEK1_EVENTS: EventDef[] = [
   },
   {
     id: 'W1_BOTTLE',
+    summary: '그물에 걸린 병 속에 여덟 살 메이지의 쪽지가 있었다. 잃어버린 개 비스킷을 찾아 달라는 부탁.',
     trigger: { day: 5, segment: 'morning' },
     bg: 'dock',
     tint: 'morning',
@@ -342,6 +375,7 @@ export const WEEK1_EVENTS: EventDef[] = [
   },
   {
     id: 'W1_KNOT_LESSON',
+    summary: '거스가 처음으로 그물 꿰매는 법을 가르쳐 주었다. 오늘은 거스의 자리로 한 번 더 간다.',
     trigger: { day: 6, segment: 'dawn' },
     bg: 'dock',
     tint: 'dawn',

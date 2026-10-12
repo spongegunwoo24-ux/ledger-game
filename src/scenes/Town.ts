@@ -6,63 +6,68 @@ import { TUNING } from '../config/tuning';
 import { check } from '../core/conditions';
 import { isPaymentDay } from '../core/calendar';
 import { G } from '../core/game';
-import { owns } from '../core/state';
 import type { LocId } from '../core/types';
 import { initView } from '../core/view';
+import { tickClock } from '../core/clock';
 import { LOCATIONS, type LocationDef } from '../data/locations';
 import { peopleAt } from '../data/schedules';
 import { FEEL_ICON, feelStateOf } from '../systems/feelings';
 import { notebookEntries } from '../systems/notebook';
 import { Button, panel } from '../ui/Button';
 import { Hud } from '../ui/Hud';
+import { addHeadMark, headMarkFor } from '../ui/headIcon';
+import { getSettings } from '../ui/settings';
 import { txt } from '../ui/text';
-import { endSegment } from './director';
+import { checkAfternoonClock, endSegment } from './director';
 import type { FeelId } from '../core/types';
 
-export function afternoonSlots(): number {
-  return owns(G.state, 'truck') ? TUNING.afternoon.slotsWithTruck : TUNING.afternoon.slots;
+/** where Eli is on the town map (for walking time) */
+let currentLoc: LocId = 'dock';
+export function setTownLoc(l: LocId) {
+  currentLoc = l;
 }
 
-/** Afternoon town map: clickable nodes; each visit spends one slot. */
+/** Afternoon town map (interim until the walkable town in M2): clickable nodes, walking costs clock time. */
 export class TownScene extends Phaser.Scene {
   constructor() {
     super('Town');
   }
 
+  private leaving = false;
+
   create() {
     initView(this);
+    this.leaving = false;
     const s = G.state;
     this.cameras.main.fadeIn(300, 21, 18, 31);
     ambientWaves(true, 0.02);
     music('town');
     this.drawMap();
-    const slots = afternoonSlots();
-    const left = slots - s.slotsUsed;
     if (s.slotsUsed === 0) this.time.delayedCall(300, () => sfx('bell'));
-
+    s.slotsUsed = 1;
     // quest markers: where the notebook says to go this afternoon
     const targets = new Set(notebookEntries(s).filter((e) => e.availableNow && e.seg === 'afternoon' && e.loc).map((e) => e.loc as LocId));
     for (const loc of LOCATIONS) {
       if (!check(s, loc.requires)) continue;
-      this.node(loc, targets.has(loc.id), left > 0);
+      this.node(loc, targets.has(loc.id), true);
     }
     new Hud(this);
-    // slot indicator
     const g = this.add.graphics().setDepth(700);
-    panel(g, 500, 640, 280, 60, 0xfffaf0, 18);
-    txt(this, 520, 670, '남은 오후', { size: 20 }).setOrigin(0, 0.5).setDepth(701);
-    for (let i = 0; i < slots; i++) {
-      const filled = i < left;
-      const c = this.add.circle(650 + i * 34, 670, 12, filled ? PALETTE.butter : 0xd9d4e3).setStrokeStyle(3, PALETTE.ink).setDepth(701);
-      if (filled) this.tweens.add({ targets: c, scale: 1.12, duration: 700, yoyo: true, repeat: -1 });
-    }
-    const label = isPaymentDay(s.day) && !s.flags[`paid_${s.day}`] ? '저녁으로 (은행 납부)' : '저녁으로 →';
-    new Button(this, 1120, 670, label, () => this.finish(), { w: 250, h: 54, size: 20, fill: left > 0 ? 0xfff3d6 : PALETTE.coral }).setDepth(700);
-    if (left <= 0) {
-      txt(this, 640, 600, '해가 기운다. 오늘 오후는 여기까지.', { size: 22, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 5 })
-        .setOrigin(0.5)
-        .setDepth(700);
-    }
+    panel(g, 430, 640, 420, 60, 0xfffaf0, 18);
+    txt(this, 640, 670, '19:00까지 자유. 걸어가는 데도 시간이 든다.', { size: 18 }).setOrigin(0.5).setDepth(701);
+    const label = isPaymentDay(s.day) && !s.flags[`paid_${s.day}`] ? '저녁으로 (은행 17시)' : '저녁으로 →';
+    new Button(this, 1120, 670, label, () => this.finish(), { w: 250, h: 54, size: 20, fill: 0xfff3d6 }).setDepth(700);
+    // where Eli is standing on the map
+    const here = LOCATIONS.find((l) => l.id === currentLoc) ?? LOCATIONS[0];
+    const me = this.add.image(here.x, here.y - 70, 'por_eli').setScale(0.16).setDepth(30);
+    this.tweens.add({ targets: me, y: me.y - 6, duration: 500, yoyo: true, repeat: -1 });
+  }
+
+  update(_t: number, delta: number) {
+    const s = G.state;
+    if (this.leaving) return;
+    tickClock(s, delta, 'land');
+    if (checkAfternoonClock(this, 'Town')) this.leaving = true;
   }
 
   private drawMap() {
@@ -119,7 +124,7 @@ export class TownScene extends Phaser.Scene {
       const y = (i * 131) % 460 + 120;
       g.fillStyle(SHADE.palm, 0.8).fillCircle(x, y, 12);
     }
-    txt(this, 640, 104, '펠리컨 코브 · 오후', { size: 30, fontFamily: FONT_TITLE, color: '#3B3355' }).setOrigin(0.5).setDepth(1);
+    txt(this, 640, 104, '펠리컨 코브', { size: 30, fontFamily: FONT_TITLE, color: '#3B3355' }).setOrigin(0.5).setDepth(1);
   }
 
   private node(loc: LocationDef, marked: boolean, canGo: boolean) {
@@ -142,8 +147,11 @@ export class TownScene extends Phaser.Scene {
       c.add(img);
       const fv = s.feelings[p as FeelId];
       if (fv !== undefined) c.add(txt(this, px + 10, 10, FEEL_ICON[feelStateOf(fv)], { size: 11, color: '#3B3355' }).setOrigin(0.5));
+      const mk = headMarkFor(s, p, loc.id);
+      const hm = mk === 'talk' ? null : addHeadMark(this, px, -40, mk, 24);
+      if (hm) c.add(hm);
     });
-    if (marked) {
+    if (marked && getSettings().guidance) {
       const m = txt(this, 30, -62, '!', { size: 30, fontFamily: FONT_TITLE, color: '#D7263D', stroke: '#FFFAF0', strokeThickness: 5 }).setOrigin(0.5);
       c.add(m);
       this.tweens.add({ targets: m, y: -70, duration: 450, yoyo: true, repeat: -1 });
@@ -156,18 +164,26 @@ export class TownScene extends Phaser.Scene {
 
   private visit(loc: LocationDef, canGo: boolean) {
     const s = G.state;
+    if (this.leaving) return;
     if (loc.id === 'home') {
       this.finish();
       return;
     }
     if (!canGo) return;
-    s.slotsUsed += 1;
+    // [변경 1] walking takes time (interim until the walkable town in M2)
+    const from = LOCATIONS.find((l) => l.id === currentLoc) ?? LOCATIONS[0];
+    const mins = Math.round((Phaser.Math.Distance.Between(from.x, from.y, loc.x, loc.y) / 100) * TUNING.clock.walkPer100px);
+    s.time = Math.min(TUNING.clock.dusk, s.time + mins);
+    currentLoc = loc.id;
+    this.leaving = true;
     sfx('step');
     this.cameras.main.fadeOut(250, 21, 18, 31);
     this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Location', { loc: loc.id }));
   }
 
   private finish() {
+    this.leaving = true;
+    currentLoc = 'home';
     this.cameras.main.fadeOut(350, 21, 18, 31);
     this.cameras.main.once('camerafadeoutcomplete', () => endSegment(this));
   }

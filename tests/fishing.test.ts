@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeRng } from '../src/core/rng';
 import { newGame } from '../src/core/state';
-import { conditionsFor, groundAvailable, rollHaul, snagChancePerSecond, towCurve } from '../src/systems/fishing';
+import { conditionsFor, groundAvailable, rollHaul, snagChancePerMinute, towCurve } from '../src/systems/fishing';
 
 describe('fishing', () => {
   it('longer tows catch more, with diminishing returns', () => {
@@ -11,8 +11,9 @@ describe('fishing', () => {
   });
 
   it('no snag risk at the start of a tow; wreck is riskier than the sandbar', () => {
-    expect(snagChancePerSecond('wreck', 10)).toBe(0);
-    expect(snagChancePerSecond('wreck', 80)).toBeGreaterThan(snagChancePerSecond('sandbar', 80));
+    expect(snagChancePerMinute('wreck', 10)).toBe(0);
+    expect(towCurve(75)).toBe(1);
+    expect(snagChancePerMinute('wreck', 80)).toBeGreaterThan(snagChancePerMinute('sandbar', 80));
   });
 
   it("the spot in front of the lighthouse is locked until Day 67; Gus's spot only Day 1, 6 and from Day 15", () => {
@@ -27,7 +28,7 @@ describe('fishing', () => {
   it('hauls are deterministic and include the Day 5 bottle', () => {
     const opts = (seed: number) => ({
       ground: 'oyster' as const,
-      seconds: 70,
+      minutes: 70,
       conditions: conditionsFor(5, 7),
       netTornAtStart: false,
       snagged: false,

@@ -1,5 +1,7 @@
 import type Phaser from 'phaser';
 import { isPaymentDay } from '../core/calendar';
+import { segmentStartTime } from '../core/clock';
+import { TUNING } from '../config/tuning';
 import { pendingEvents, type EventDef } from '../core/events';
 import { G } from '../core/game';
 import type { Segment } from '../core/types';
@@ -59,11 +61,16 @@ export function endSegment(from: Phaser.Scene): void {
     go(from, 'Cutscene', { eventId: evs[0].id, then: 'endSegment' } satisfies CutsceneData);
     return;
   }
-  if (s.segment === 'afternoon' && isPaymentDay(s.day) && !s.flags[`paid_${s.day}`]) {
-    go(from, 'Cutscene', { special: 'payment', then: 'endSegment' } satisfies CutsceneData);
-    return;
+  if (s.segment === 'afternoon') {
+    // ending the afternoon early still passes 17:00
+    const timed = timedAfternoonEvent();
+    if (timed) {
+      go(from, 'Cutscene', { special: timed, then: 'endSegment' } satisfies CutsceneData);
+      return;
+    }
   }
   s.segment = NEXT[s.segment];
+  s.time = Math.max(segmentStartTime(s.segment, s.day), s.segment === 'morning' ? s.time : 0);
   enterSegment(from);
 }
 
@@ -71,4 +78,30 @@ export function endSegment(from: Phaser.Scene): void {
 export function locationEvents(loc: string): EventDef[] {
   const s = G.state;
   return pendingEvents(s, ALL_EVENTS, s.segment, 'start', loc);
+}
+
+/** [변경 1] Friday 17:00 payment and Monday 17:00 overdue deadline. */
+export function timedAfternoonEvent(): 'payment' | 'deadline' | null {
+  const s = G.state;
+  if (isPaymentDay(s.day) && !s.flags[`paid_${s.day}`]) return 'payment';
+  if (s.overdue && s.day >= s.overdue.deadlineDay && !s.flags[`deadline_${s.day}`]) return 'deadline';
+  return null;
+}
+
+/** Called from afternoon scenes every frame: fires timed events at 17:00 and ends the day at 19:00. */
+export function checkAfternoonClock(from: Phaser.Scene, returnTo: string, returnData?: object): boolean {
+  const s = G.state;
+  if (s.segment !== 'afternoon') return false;
+  if (s.time >= TUNING.clock.payDeadline) {
+    const timed = timedAfternoonEvent();
+    if (timed) {
+      go(from, 'Cutscene', { special: timed, then: 'return', returnTo, returnData } satisfies CutsceneData);
+      return true;
+    }
+  }
+  if (s.time >= TUNING.clock.dusk) {
+    endSegment(from);
+    return true;
+  }
+  return false;
 }

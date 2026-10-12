@@ -1,3 +1,4 @@
+import { TUNING } from '../config/tuning';
 import { isMonday, isSaturday } from '../core/calendar';
 import { emptyDayStats, emptyWeekStats, type GameState } from '../core/state';
 
@@ -17,6 +18,7 @@ export function applyOvernight(s: GameState): string[] {
   }
   s.day += 1;
   s.segment = 'dawn';
+  s.time = TUNING.clock.wake;
   s.today = emptyDayStats();
   s.lettersToday = 0;
   s.slotsUsed = 0;

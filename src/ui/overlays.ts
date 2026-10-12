@@ -147,3 +147,27 @@ export function showLetter(scene: Phaser.Scene, title: string, body: string, loo
   scene.tweens.add({ targets: c, alpha: 1, duration: 250 });
   return clickToClose(scene, [c], 500);
 }
+
+/** [변경 1] An official paper: bank notice, repayment table, red warning letter. */
+export function showNotice(scene: Phaser.Scene, title: string, lines: string[], tone: 'official' | 'red'): Promise<void> {
+  sfx('paper');
+  const c = scene.add.container(0, 0).setDepth(DEPTH);
+  c.add(scene.add.rectangle(0, 0, 1280, 720, PALETTE.ink, 0.5).setOrigin(0));
+  const g = scene.add.graphics();
+  const h = 170 + lines.length * 44;
+  const y = 360 - h / 2;
+  panel(g, 240, y, 800, h, tone === 'red' ? 0xfff0f0 : 0xfffdf6, 6);
+  g.fillStyle(tone === 'red' ? PALETTE.killerRed : 0x3d5570, 1).fillRect(240, y, 800, 14);
+  c.add(g);
+  c.add(txt(scene, 640, y + 56, title, { size: 34, fontFamily: FONT_TITLE, color: tone === 'red' ? CSS.killerRed : '#3d5570' }).setOrigin(0.5));
+  c.add(txt(scene, 640, y + 92, '걸프 코스트 저축은행 · 펠리컨 코브 지점', { size: 15, color: '#7d7896' }).setOrigin(0.5));
+  lines.forEach((l, i) => c.add(txt(scene, 300, y + 130 + i * 44, l, { size: 23, wordWrap: { width: 680 } })));
+  if (tone === 'red') {
+    const st = txt(scene, 900, y + h - 50, '연체', { size: 40, fontFamily: FONT_TITLE, color: CSS.killerRed }).setOrigin(0.5).setAngle(-14).setAlpha(0.75);
+    c.add(st);
+    scene.tweens.add({ targets: st, scale: { from: 2.2, to: 1 }, alpha: { from: 0, to: 0.75 }, duration: 260, delay: 400, ease: 'Back.Out', onStart: () => sfx('thud') });
+  }
+  c.setAlpha(0);
+  scene.tweens.add({ targets: c, alpha: 1, duration: 220 });
+  return clickToClose(scene, [c], 700);
+}

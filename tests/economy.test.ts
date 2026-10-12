@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { newGame } from '../src/core/state';
-import { dueNow, executeSale, fridayPayment, gusCanOffer, payDebt, quoteSale } from '../src/systems/economy';
+import { dueNow, executeSale, fridayPayment, gusCanOffer, overdueDeadline, payDebt, quoteSale } from '../src/systems/economy';
 
 describe('economy', () => {
   it('cannery prices and market ×2', () => {
     const s = newGame(1);
-    s.hold = { small: 10, medium: 10, large: 10, crabs: 4 };
+    s.hold = { small: 10, medium: 10, large: 10, crabs: 4, fishCount: 0, fishValue: 0, golden: 0, bonus: 0 };
     expect(quoteSale(s, 'cannery').total).toBeCloseTo(10 * 1 + 10 * 1.6 + 10 * 2.6 + 4 * 1.5);
     expect(quoteSale(s, 'market').total).toBeCloseTo(2 * (10 + 16 + 26 + 6));
   });
@@ -13,7 +13,7 @@ describe('economy', () => {
   it('cannery oversupply after 450 lb in a week', () => {
     const s = newGame(1);
     s.week.canneryLbs = 440;
-    s.hold = { small: 20, medium: 0, large: 0, crabs: 0 };
+    s.hold = { small: 20, medium: 0, large: 0, crabs: 0, fishCount: 0, fishValue: 0, golden: 0, bonus: 0 };
     const q = quoteSale(s, 'cannery');
     expect(q.oversupplyLbs).toBe(10);
     expect(q.total).toBeCloseTo(10 * 1 + 10 * 0.8);
@@ -21,7 +21,7 @@ describe('economy', () => {
 
   it('Rosa takes at most 30 lb a day, largest first, no crabs', () => {
     const s = newGame(1);
-    s.hold = { small: 20, medium: 20, large: 20, crabs: 5 };
+    s.hold = { small: 20, medium: 20, large: 20, crabs: 5, fishCount: 0, fishValue: 0, golden: 0, bonus: 0 };
     const q = quoteSale(s, 'rosa');
     expect(q.lbs).toEqual({ small: 0, medium: 10, large: 20 });
     expect(q.crabs).toBe(0);
@@ -39,36 +39,57 @@ describe('economy', () => {
     expect(s.debt).toBe(4000);
   });
 
-  it('first short week gets an extension, three $0 Fridays repossess', () => {
+  it('[변경 1] first Friday shortfall: warning + 10% late fee due Monday; paying in time clears it', () => {
+    const s = newGame(1);
+    s.day = 7;
+    s.money = 200;
+    const r = fridayPayment(s);
+    expect(r.short).toBe(50);
+    expect(r.fee).toBe(5);
+    expect(r.repossess).toBe(false);
+    expect(s.overdue).toEqual({ amount: 55, deadlineDay: 10 });
+    s.day = 10;
+    s.money = 60;
+    const d = overdueDeadline(s);
+    expect(d?.repossess).toBe(false);
+    expect(s.overdue).toBeNull();
+    expect(s.money).toBe(5);
+  });
+
+  it('[변경 1] overdue not paid by Monday 17:00 → repossession', () => {
     const s = newGame(1);
     s.day = 7;
     s.money = 0;
-    let r = fridayPayment(s);
-    expect(r.extensionGranted).toBe(true);
-    expect(r.repossess).toBe(false);
-    expect(s.zeroStreak).toBe(0);
+    fridayPayment(s);
+    s.day = 10;
+    s.money = 100;
+    const d = overdueDeadline(s);
+    expect(d?.repossess).toBe(true);
+  });
+
+  it('[변경 1] a second Friday shortfall in the season → repossession', () => {
+    const s = newGame(1);
+    s.day = 7;
+    s.money = 100;
+    fridayPayment(s);
+    s.day = 10;
+    s.money = 500;
+    overdueDeadline(s);
     s.day = 14;
-    r = fridayPayment(s);
-    expect(r.warning).toBe(1);
-    s.day = 21;
-    r = fridayPayment(s);
-    expect(r.warning).toBe(2);
-    s.day = 28;
-    r = fridayPayment(s);
+    s.money = 10;
+    const r = fridayPayment(s);
     expect(r.repossess).toBe(true);
   });
 
-  it('a partial payment resets the zero streak', () => {
+  it('paying the overdue early at the bank counts', () => {
     const s = newGame(1);
-    s.extensionUsed = true;
     s.day = 7;
     s.money = 0;
     fridayPayment(s);
-    expect(s.zeroStreak).toBe(1);
-    s.day = 14;
-    s.money = 10;
-    fridayPayment(s);
-    expect(s.zeroStreak).toBe(0);
+    s.day = 8;
+    s.money = 300;
+    payDebt(s, 275);
+    expect(s.overdue).toBeNull();
   });
 
   it('prepaying means nothing is due on Friday and is never a $0 week', () => {
@@ -81,7 +102,7 @@ describe('economy', () => {
     s.money = 0;
     const r = fridayPayment(s);
     expect(r.due).toBe(0);
-    expect(s.zeroStreak).toBe(0);
+    expect(r.short).toBe(0);
   });
 
   it('paying everything off is celebrated, not an ending', () => {
@@ -96,12 +117,15 @@ describe('economy', () => {
     expect(r.due).toBe(0);
   });
 
-  it("Gus's coffee can is offered once when money < 50% of what is due (Days 7–42)", () => {
+  it("Gus's coffee can is offered once when a Friday will fall short (Days 1–44)", () => {
     const s = newGame(1);
     s.day = 14;
     s.money = 100;
     s.debt = 4000;
     expect(gusCanOffer(s)).toBe(true);
+    s.money = 600;
+    expect(gusCanOffer(s)).toBe(false);
+    s.money = 100;
     s.flags.gusCanOffered = true;
     expect(gusCanOffer(s)).toBe(false);
     const t = newGame(1);

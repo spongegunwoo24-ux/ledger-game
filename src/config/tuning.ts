@@ -12,7 +12,26 @@ export const TUNING = {
     week1Due: 250,
     weeklyDue: 500,
     lastPaymentWeek: 9,
-    repossessZeroFridays: 3,
+    /** a Friday shortfall must be paid by Monday 17:00 with this late fee */
+    lateFee: 0.1,
+    /** second Friday shortfall in the season = repossession */
+    maxShortfalls: 2,
+  },
+
+  /** [변경 1] day clock. Minutes since midnight; speeds in game minutes per real second. */
+  clock: {
+    wake: 4 * 60,
+    seaEnd: 8 * 60,
+    afternoon: 9 * 60,
+    payDeadline: 17 * 60,
+    dusk: 19 * 60,
+    night: 23 * 60,
+    seaSpeed: 1,
+    landSpeed: 2,
+    /** minutes of sailing per 100 px on the sea map */
+    sailPer100px: 6,
+    /** minutes of walking per 100 px on the town map (interim until M2) */
+    walkPer100px: 9,
   },
 
   prices: {
@@ -20,6 +39,7 @@ export const TUNING = {
     medium: 1.6,
     large: 2.6,
     crab: 1.5,
+    goldenShrimp: 30,
     marketMultiplier: 2,
     rosaMultiplier: 2,
     rosaMaxLbsPerDay: 30,
@@ -34,27 +54,26 @@ export const TUNING = {
 
   gusCan: {
     amount: 150,
-    firstDay: 7,
-    lastDay: 42,
-    thresholdRatio: 0.5,
+    firstDay: 1,
+    lastDay: 44,
   },
 
-  // Trawl
+  // Net (game minutes; at sea 1 real second = 1 game minute)
   trawl: {
-    // seconds for the catch curve to reach ~63% of max
-    tau: 42,
-    goodTowMin: 60,
-    goodTowMax: 90,
-    // snag chance per second, multiplied by (t / snagRampSeconds), after snagGraceSeconds
-    snagGraceSeconds: 25,
-    snagRampSeconds: 60,
+    /** minutes for the net to fill to its capacity */
+    netFullMinutes: 75,
+    goodTowMin: 55,
+    goodTowMax: 85,
+    // snag chance per minute, multiplied by ((t - grace) / ramp)
+    snagGraceMinutes: 20,
+    snagRampMinutes: 50,
     snagHaulLossMin: 0.3,
     snagHaulLossMax: 0.6,
     tornNetYieldMult: 0.55,
     goodWinchHaulMult: 1.8,
     // max items that can appear on deck from one tow (performance + sorting time)
     maxItemsPerTow: 70,
-    lbsPerShrimpItem: 1.3,
+    lbsPerShrimpItem: 0.29,
   },
 
   sorting: {
@@ -77,6 +96,29 @@ export const TUNING = {
     slotsWithTruck: 3,
   },
 
+  /** [변경 1] rod fishing */
+  fishing: {
+    baitSpeed: 230,
+    sinkSpeed: 45,
+    /** px below the surface the line reaches (long line upgrade adds more) */
+    lineLength: 330,
+    longLineExtra: 120,
+    perfectWindow: 0.3,
+    goodWindow: 0.7,
+    maxFish: 13,
+    spawnEverySec: 1.6,
+    fight: { rare: 3, veryRare: 4, legendary: 9 },
+  },
+
+  combo: {
+    perStep: 0.01,
+    max: 0.25,
+    fresh1Sec: 20,
+    fresh1: 0.08,
+    fresh2Sec: 40,
+    fresh2: 0.04,
+  },
+
   letters: {
     perEvening: 1,
     perSunday: 2,
@@ -85,7 +127,7 @@ export const TUNING = {
 
 export type SnagRisk = 'veryLow' | 'low' | 'medium' | 'high';
 
-export const SNAG_PER_SECOND: Record<SnagRisk, number> = {
+export const SNAG_PER_MINUTE: Record<SnagRisk, number> = {
   veryLow: 0.0012,
   low: 0.0025,
   medium: 0.0045,

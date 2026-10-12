@@ -2,15 +2,23 @@ import type { ShrimpSize } from '../core/types';
 
 export type CatchKind = 'shrimp' | 'crab' | 'fish' | 'trash' | 'turtle' | 'curio' | 'story';
 
+export type ShrimpSpecies = 'brown' | 'white' | 'pink';
+
 export interface CatchItem {
   uid: number;
   kind: CatchKind;
   size?: ShrimpSize;
-  /** variant for fish/trash, or the curiosity / story item id */
+  /** shrimp species (brown/white/pink), fish species id, trash variant, or curiosity / story item id */
   id?: string;
+  /** fish length in inches */
+  inches?: number;
+  /** golden shrimp (rare net find) */
+  golden?: boolean;
 }
 
-export const FISH_VARIANTS = ['croaker', 'pinfish', 'mullet'] as const;
+export const SHRIMP_SPECIES: ShrimpSpecies[] = ['brown', 'white', 'pink'];
+export const SHRIMP_SPECIES_NAME: Record<ShrimpSpecies, string> = { brown: '갈색새우', white: '흰새우', pink: '분홍새우' };
+export const SHRIMP_TINT: Record<ShrimpSpecies, number> = { brown: 0xe0b090, white: 0xfff6ee, pink: 0xffffff };
 export const TRASH_VARIANTS = ['can', 'boot', 'weed', 'bag', 'tire'] as const;
 
 export interface CuriosityDef {

@@ -283,6 +283,13 @@ export function generateItems(scene: Phaser.Scene): void {
   bake(scene, 'bin_bucket', 80, 76, (p) => bucket(p));
   bake(scene, 'bin_barrel', 80, 84, (p) => barrel(p));
   bake(scene, 'bin_crate', 80, 70, (p) => crate(p));
+  bake(scene, 'bin_icebox', 84, 72, (p) => {
+    p.ellipse(42, 66, 74, 10, 0x3b3355, { outline: false, alpha: 0.12 });
+    p.rrect(6, 20, 72, 44, 8, 0xdff6fb);
+    p.rrect(6, 12, 72, 14, 6, 0x7ab8d8);
+    p.rect(12, 34, 60, 6, 0xbfe8f2, { outline: false });
+    for (let i = 0; i < 4; i++) p.rrect(14 + i * 15, 44, 11, 9, 2, 0xffffff, { lw: 1 });
+  });
   // misc props
   bake(scene, 'fx_splash', 24, 24, (p) => p.circle(12, 12, 8, SHADE.foam, { outline: false }));
   bake(scene, 'fx_dot', 12, 12, (p) => p.circle(6, 6, 5, 0xffffff, { outline: false }));

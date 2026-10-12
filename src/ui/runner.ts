@@ -4,9 +4,11 @@ import { check } from '../core/conditions';
 import { applyEffects } from '../core/effects';
 import type { MinigameId, Step } from '../core/events';
 import { G } from '../core/game';
-import { choose, DialogueBox, Toasts } from './Dialogue';
+import { holdClock, releaseClock } from '../core/clock';
+import { choose, DialogueBox, logLine, Toasts } from './Dialogue';
+import { questBanner } from './banner';
 import { runMinigame } from './minigames';
-import { showItem, showLetter, titleCard } from './overlays';
+import { showItem, showLetter, showNotice, titleCard } from './overlays';
 import type { Stage } from './Stage';
 
 export interface RunCtx {
@@ -14,10 +16,12 @@ export interface RunCtx {
   stage: Stage;
   dlg: DialogueBox;
   toasts: Toasts;
+  /** true once any part of the current scene was skipped */
+  skipped: boolean;
 }
 
 export function makeRunCtx(scene: Phaser.Scene, stage: Stage): RunCtx {
-  return { scene, stage, dlg: new DialogueBox(scene), toasts: new Toasts(scene) };
+  return { scene, stage, dlg: new DialogueBox(scene), toasts: new Toasts(scene), skipped: false };
 }
 
 const wait = (scene: Phaser.Scene, ms: number) => new Promise<void>((r) => scene.time.delayedCall(ms, () => r()));
@@ -35,14 +39,55 @@ function fade(scene: Phaser.Scene, dir: 'in' | 'out', ms: number): Promise<void>
   });
 }
 
+/** Toasts; quest news gets the big banner instead (변경 1, item 7). */
 export function toastAll(ctx: RunCtx, msgs: string[]) {
-  for (const m of msgs) ctx.toasts.show(m);
+  for (const m of msgs) {
+    if (/^(새 할 일|완료|단계 완료)/.test(m)) questBanner(ctx.scene, m);
+    else ctx.toasts.show(m);
+  }
 }
 
 /** Plays a list of scripted steps. Resolves when the last step finishes. */
 export async function runSteps(ctx: RunCtx, steps: Step[]): Promise<void> {
   const s = G.state;
   for (const st of steps) {
+    // [변경 1] "건너뛰기 ▶▶": fast-forward everything except choices and minigames
+    if (ctx.dlg.skipping) {
+      ctx.skipped = true;
+      switch (st.t) {
+        case 'say':
+          logLine('say', st.text, st.who);
+          continue;
+        case 'think':
+        case 'narrate':
+          logLine(st.t, st.text);
+          continue;
+        case 'move':
+          ctx.stage.actors.get(st.who)?.setPosition(st.to.x, st.to.y);
+          continue;
+        case 'exit':
+          ctx.stage.remove(st.who);
+          continue;
+        case 'camera':
+          ctx.stage.root.setScale(st.zoom ?? 1).setPosition(st.zoom && st.zoom !== 1 ? 640 - st.to.x * st.zoom : 0, st.zoom && st.zoom !== 1 ? 360 - st.to.y * st.zoom : 0);
+          continue;
+        case 'wait':
+        case 'fade':
+        case 'sfx':
+        case 'showItem':
+        case 'letter':
+        case 'notice':
+        case 'card':
+        case 'shake':
+          continue;
+        case 'choice':
+        case 'minigame':
+          ctx.dlg.skipping = false;
+          break;
+        default:
+          break;
+      }
+    }
     switch (st.t) {
       case 'say':
         await ctx.dlg.show('say', st.text, st.who);
@@ -108,7 +153,12 @@ export async function runSteps(ctx: RunCtx, steps: Step[]): Promise<void> {
         break;
       case 'minigame':
         ctx.dlg.hide();
-        await runMinigame(ctx.scene, st.id as MinigameId, st.params ?? {});
+        {
+          const token = {};
+          holdClock(token);
+          await runMinigame(ctx.scene, st.id as MinigameId, st.params ?? {});
+          releaseClock(token);
+        }
         break;
       case 'card':
         ctx.dlg.hide();
@@ -120,6 +170,10 @@ export async function runSteps(ctx: RunCtx, steps: Step[]): Promise<void> {
         break;
       case 'shake':
         await ctx.stage.shake(st.who);
+        break;
+      case 'notice':
+        ctx.dlg.hide();
+        await showNotice(ctx.scene, st.title, st.lines, st.tone ?? 'official');
         break;
       case 'notes':
         ctx.stage.setNotes(st.who, st.on);

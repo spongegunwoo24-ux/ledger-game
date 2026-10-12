@@ -4,6 +4,7 @@ import type { EventDef } from '../../core/events';
 export const COMMON_EVENTS: EventDef[] = [
   {
     id: 'SUN_CHURCH',
+    summary: '일요일 미사에 갔다. 제단 옆에는 실종된 사람들을 위한 초가 켜져 있다.',
     trigger: { segment: 'morning', requires: { flag: 'churchToday' }, once: false },
     order: 5,
     bg: 'church',
@@ -38,6 +39,7 @@ export const COMMON_EVENTS: EventDef[] = [
   },
   {
     id: 'LEE_FINE',
+    summary: '바다거북을 쓰레기통에 버린 일로 단속관 리에게 경고장과 벌금 20달러를 받았다.',
     trigger: { segment: 'morning', requires: { flag: 'turtleBinned' }, once: false },
     order: 6,
     bg: 'dock',

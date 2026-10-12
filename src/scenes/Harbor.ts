@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PALETTE, FONT_TITLE, FONT_HAND } from '../art/palette';
+import { PALETTE, SHADE, FONT_TITLE, FONT_HAND } from '../art/palette';
 import { drawBackdrop, addTint } from '../art/backdrops';
 import { addSprite } from '../art/manifest';
 import { ambientWaves, music, sfx } from '../audio/sfx';
@@ -7,6 +7,10 @@ import { TUNING } from '../config/tuning';
 import { isSunday, moonOf, tideOf, weatherOf } from '../core/calendar';
 import { G } from '../core/game';
 import { initView } from '../core/view';
+import { holdClock, releaseClock, seaEndTime, tickClock } from '../core/clock';
+import { BAITS } from '../data/bait';
+import { paymentPressure } from '../systems/economy';
+import { notebookEntries, paymentStatusLine } from '../systems/notebook';
 import { spend } from '../systems/economy';
 import { Button, panel } from '../ui/Button';
 import { DialogueBox, Toasts } from '../ui/Dialogue';
@@ -20,6 +24,7 @@ export class HarborScene extends Phaser.Scene {
   private dlg!: DialogueBox;
   private toasts!: Toasts;
   private busy = false;
+  private leaving = false;
 
   constructor() {
     super('Harbor');
@@ -29,6 +34,7 @@ export class HarborScene extends Phaser.Scene {
     initView(this);
     const s = G.state;
     this.busy = false;
+    this.leaving = false;
     this.cameras.main.fadeIn(400, 21, 18, 31);
     ambientWaves(true, 0.06);
     music('dawn');
@@ -82,6 +88,115 @@ export class HarborScene extends Phaser.Scene {
     if (s.flags.graffiti) {
       new Button(this, sunday || s.netTorn ? 980 : 980, 560, '낙서 덮어 칠하기', () => this.repaint(), { w: 260, h: 54, size: 20, fill: PALETTE.mint }).setDepth(70);
     }
+    // [변경 1] Hank's bait stand
+    this.baitStand();
+    G.trip = null;
+    if (!s.flags[`todayCard_${s.day}`]) {
+      s.flags[`todayCard_${s.day}`] = true;
+      this.time.delayedCall(450, () => this.todayCard());
+    }
+  }
+
+  update(_t: number, delta: number) {
+    const s = G.state;
+    if (this.busy || this.leaving) return;
+    tickClock(s, delta, 'land', seaEndTime(s.day));
+    if (s.time >= seaEndTime(s.day)) {
+      this.leaving = true;
+      void (async () => {
+        await this.dlg.show('think', '여덟 시. 오늘은 바다에 못 나갔다. 시장이나 가 보자.');
+        this.dlg.hide();
+        endSegment(this);
+      })();
+    }
+  }
+
+  /** [변경 1] 04:00 "오늘 할 일" card. */
+  private todayCard() {
+    const s = G.state;
+    const token = {};
+    holdClock(token);
+    const c = this.add.container(0, 0).setDepth(1200);
+    const shade = this.add.rectangle(0, 0, 1280, 720, PALETTE.ink, 0.45).setOrigin(0).setInteractive();
+    const g = this.add.graphics();
+    panel(g, 330, 90, 620, 520, 0xfbf6e8, 16);
+    c.add([shade, g]);
+    c.add(txt(this, 640, 132, `오늘 할 일 · ${s.day}일째 새벽 04:00`, { size: 28, fontFamily: FONT_TITLE }).setOrigin(0.5));
+    let y = 180;
+    const line = (head: string, body: string, color = '#3B3355') => {
+      c.add(txt(this, 370, y, head, { size: 17, color: '#b04a52' }));
+      const t = txt(this, 390, y + 24, body, { size: 20, color, wordWrap: { width: 540 } });
+      c.add(t);
+      y += 30 + t.height + 10;
+    };
+    const p = paymentPressure(s);
+    line('상환', paymentStatusLine(s), ['#2f8f5f', '#e07b2a', '#d7263d'][p]);
+    const w = weatherOf(s.day, s.seed);
+    line('바다', `${w} · ${tideOf(s.day, s.seed)} · ${moonOf(s.day)}달. 08:00에는 돌아와야 시장이 열려 있다.`);
+    const qs = notebookEntries(s).filter((e) => e.questId);
+    line('진행 중인 일', qs.length ? qs.map((e) => `· ${e.questTitle}: ${e.text} (${e.where})`).join('\n') : '· 특별한 부탁은 없다. 새우나 잡자.');
+    line('오늘의 주문', '항구 게시판에 아직 주문이 붙지 않았다.', '#9a96a8');
+    c.add(txt(this, 640, 586, '아무 데나 누르면 시작', { size: 15, color: '#9a96a8' }).setOrigin(0.5));
+    shade.on('pointerdown', () => {
+      releaseClock(token);
+      c.destroy();
+    });
+  }
+
+  private baitStand() {
+    const s = G.state;
+    const stall = this.add.graphics().setDepth(5);
+    stall.fillStyle(SHADE.woodLight, 1).fillRect(40, 480, 170, 70).lineStyle(3, PALETTE.ink).strokeRect(40, 480, 170, 70);
+    stall.fillStyle(PALETTE.mint, 1).fillRect(30, 440, 190, 26).lineStyle(3, PALETTE.ink).strokeRect(30, 440, 190, 26);
+    for (let i = 0; i < 5; i++) stall.fillStyle(i % 2 ? 0xfffaf0 : PALETTE.mint, 1).fillRect(30 + i * 38, 440, 19, 26);
+    txt(this, 125, 515, '미끼', { size: 22, fontFamily: FONT_TITLE }).setOrigin(0.5).setDepth(6);
+    addSprite(this, 125, 470, 'ch_hank', 1.2).setOrigin(0.5, 0.95).setDepth(4);
+    const z = this.add.zone(30, 400, 200, 160).setOrigin(0).setDepth(7).setInteractive({ useHandCursor: true });
+    z.on('pointerdown', () => !this.busy && this.openBaitShop());
+    txt(this, 125, 566, '행크의 미끼 가판대', { size: 15, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 4 }).setOrigin(0.5).setDepth(6);
+    s.flags.metHank = true;
+  }
+
+  private openBaitShop() {
+    const s = G.state;
+    this.busy = true;
+    const token = {};
+    holdClock(token);
+    const c = this.add.container(0, 0).setDepth(1100);
+    const shade = this.add.rectangle(0, 0, 1280, 720, PALETTE.ink, 0.45).setOrigin(0).setInteractive();
+    const g = this.add.graphics();
+    panel(g, 300, 120, 680, 470, 0xfff3d6, 18);
+    c.add([shade, g]);
+    c.add(txt(this, 640, 160, '행크의 미끼 가판대', { size: 28, fontFamily: FONT_TITLE }).setOrigin(0.5));
+    const hankLine = s.feelings.hank >= 60 ? '"…오늘은 굴 양식장 쪽이 낫다."' : s.feelings.hank >= 40 ? '"…골라."' : '"…돈 놓고 가."';
+    c.add(txt(this, 640, 196, hankLine, { size: 18, color: '#6b6385' }).setOrigin(0.5));
+    const counts = txt(this, 640, 548, '', { size: 16, color: '#6b6385' }).setOrigin(0.5);
+    c.add(counts);
+    const refresh = () => counts.setText(`가진 미끼: ${BAITS.map((b) => `${b.name} ${s.bait[b.id] ?? 0}`).join(' · ')}`);
+    refresh();
+    BAITS.forEach((b, i) => {
+      const y = 250 + i * 70;
+      c.add(txt(this, 340, y - 14, `${b.name} ×${b.pack}`, { size: 21 }));
+      c.add(txt(this, 340, y + 12, b.desc, { size: 14, color: '#6b6385', wordWrap: { width: 440 } }));
+      c.add(
+        new Button(this, 880, y, `$${b.price}`, () => {
+          if (!spend(s, b.price)) {
+            this.toasts.show('돈이 모자라다.', PALETTE.coral);
+            return;
+          }
+          s.bait[b.id] = (s.bait[b.id] ?? 0) + b.pack;
+          sfx('cash');
+          refresh();
+        }, { w: 110, h: 46, size: 20, fill: PALETTE.butter }),
+      );
+    });
+    c.add(
+      new Button(this, 640, 600, '닫기', () => {
+        releaseClock(token);
+        this.busy = false;
+        c.destroy();
+      }, { w: 160, h: 44, size: 18, fill: 0xfffaf0 }),
+    );
   }
 
   private calvinBoat() {

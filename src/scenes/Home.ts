@@ -4,6 +4,8 @@ import { addSprite } from '../art/manifest';
 import { ambientWaves, music, sfx } from '../audio/sfx';
 import { G } from '../core/game';
 import { initView } from '../core/view';
+import { weekdayIndex } from '../core/calendar';
+import { dueNow } from '../systems/economy';
 import { curiosityDef } from '../data/catch';
 import { STATEMENTS } from '../data/caseWall';
 import { letterDef } from '../data/letters';
@@ -92,6 +94,18 @@ export class HomeScene extends Phaser.Scene {
       }).setDepth(60);
     }
 
+    // [변경 1] Thursday night: "내일까지 180달러…"
+    const short = dueNow(s) - s.money;
+    if (weekdayIndex(s.day) === 5 && short > 0 && !s.flags[`thuWorry_${s.day}`]) {
+      s.flags[`thuWorry_${s.day}`] = true;
+      this.time.delayedCall(500, () => {
+        this.busy = true;
+        void this.dlg.show('think', `내일까지 ${Math.ceil(short)}달러…`).then(() => {
+          this.dlg.hide();
+          this.busy = false;
+        });
+      });
+    }
     if (s.flags.firstLetterPending) {
       delete s.flags.firstLetterPending;
       this.time.delayedCall(500, () => void this.letters());

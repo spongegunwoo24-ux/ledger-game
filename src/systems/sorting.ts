@@ -2,12 +2,13 @@ import { TUNING } from '../config/tuning';
 import type { ShrimpSize } from '../core/types';
 import type { CatchItem } from '../data/catch';
 
-export type BinId = 'small' | 'medium' | 'large' | 'crab' | 'trash' | 'sea' | 'ledger' | 'keep';
+export type BinId = 'small' | 'medium' | 'large' | 'crab' | 'fish' | 'trash' | 'sea' | 'ledger' | 'keep';
 
 export type Outcome =
   | 'basket'
   | 'basketLow'
   | 'crab'
+  | 'fishKept'
   | 'trashed'
   | 'released'
   | 'turtleSaved'
@@ -25,6 +26,7 @@ export function placeItem(item: CatchItem, bin: BinId): Outcome {
   switch (item.kind) {
     case 'shrimp':
       if (bin === 'small' || bin === 'medium' || bin === 'large') {
+        if (item.golden) return 'basket';
         return bin === (item.size ?? 'small') ? 'basket' : 'basketLow';
       }
       if (bin === 'trash') return 'lost';
@@ -37,9 +39,10 @@ export function placeItem(item: CatchItem, bin: BinId): Outcome {
       if (bin === 'trash') return 'lost';
       return 'reject';
     case 'fish':
-      if (bin === 'ledger') return 'fed';
+      if (bin === 'fish') return 'fishKept';
+      if (bin === 'ledger') return item.id === 'seahorse' ? 'reject' : 'fed';
       if (bin === 'sea') return 'released';
-      if (bin === 'trash') return 'trashed';
+      if (bin === 'trash') return 'lost';
       return 'reject';
     case 'trash':
       if (bin === 'trash') return 'trashed';
@@ -69,6 +72,11 @@ export function soldAs(item: CatchItem, bin: BinId): ShrimpSize {
 export interface SortTally {
   lbs: Record<ShrimpSize, number>;
   crabs: number;
+  /** fish kept on ice: species and length */
+  fish: { id: string; inches: number }[];
+  golden: number;
+  /** [변경 1] combo + freshness bonus in dollars */
+  bonus: number;
   wrongBasket: number;
   turtlesSaved: number;
   turtlesBinned: number;
@@ -84,6 +92,9 @@ export function emptyTally(): SortTally {
   return {
     lbs: { small: 0, medium: 0, large: 0 },
     crabs: 0,
+    fish: [],
+    golden: 0,
+    bonus: 0,
     wrongBasket: 0,
     turtlesSaved: 0,
     turtlesBinned: 0,
@@ -101,6 +112,10 @@ export function recordOutcome(t: SortTally, item: CatchItem, bin: BinId, outcome
   switch (outcome) {
     case 'basket':
     case 'basketLow': {
+      if (item.golden) {
+        t.golden += 1;
+        break;
+      }
       const s = soldAs(item, bin);
       t.lbs[s] += lb;
       if (s !== item.size) t.wrongBasket += 1;
@@ -108,6 +123,9 @@ export function recordOutcome(t: SortTally, item: CatchItem, bin: BinId, outcome
     }
     case 'crab':
       t.crabs += 1;
+      break;
+    case 'fishKept':
+      if (item.id) t.fish.push({ id: item.id, inches: item.inches ?? 0 });
       break;
     case 'turtleSaved':
       t.turtlesSaved += 1;
@@ -141,7 +159,7 @@ export function correctBin(item: CatchItem, ledgerHungry: boolean): BinId {
     case 'crab':
       return 'crab';
     case 'fish':
-      return ledgerHungry ? 'ledger' : 'sea';
+      return ledgerHungry && item.id === 'pinfish' ? 'ledger' : 'fish';
     case 'trash':
       return 'trash';
     case 'turtle':
@@ -149,5 +167,24 @@ export function correctBin(item: CatchItem, ledgerHungry: boolean): BinId {
     case 'curio':
     case 'story':
       return 'keep';
+  }
+}
+
+/** [변경 1] Is this a "correct" placement for the sorting combo? */
+export function isComboHit(outcome: Outcome, item: CatchItem): boolean {
+  switch (outcome) {
+    case 'basket':
+    case 'crab':
+    case 'fishKept':
+    case 'turtleSaved':
+    case 'fed':
+    case 'kept':
+      return true;
+    case 'trashed':
+      return item.kind === 'trash';
+    case 'released':
+      return item.kind === 'fish';
+    default:
+      return false;
   }
 }

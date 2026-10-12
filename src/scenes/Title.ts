@@ -52,7 +52,9 @@ export class TitleScene extends Phaser.Scene {
     new Button(this, 640, startY + (has ? 70 : 0), '새 게임', () => {
       unlockAudio();
       startNewGame();
-      this.go();
+      music(null);
+      this.cameras.main.fadeOut(500, 21, 18, 31);
+      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Prologue'));
     }, { w: 300, h: 58, fill: has ? 0xfff3d6 : PALETTE.butter });
     new Button(this, 470, 680, '세이브 파일 불러오기', () => {
       importSave()

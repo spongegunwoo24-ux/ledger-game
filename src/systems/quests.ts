@@ -38,7 +38,7 @@ export function questOp(s: GameState, id: string, op: QuestOp): string | null {
     applyEffects(s, def.complete);
     return `완료: ${def.title}`;
   }
-  return null;
+  return step ? `단계 완료: ${step.task}` : null;
 }
 
 export function currentStep(s: GameState, id: string): QuestStepDef | undefined {

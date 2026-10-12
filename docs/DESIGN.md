@@ -1,5 +1,7 @@
 # BUILD PROMPT — 「장부 (Ledger)」
 
+> **변경 요청 1 (2026-10-12) 반영본.** 의뢰인의 변경 요청이 원문보다 우선합니다. 바뀐 곳은 `[변경 1]`로 표시했고, 결정 내용은 `docs/DECISIONS.md`에 있습니다.
+
 **Always reply to the human in Korean (한국어로만 대답하세요).**
 
 You are the lead developer, designer, and writer for a complete, playable video game called **「장부 (Ledger)」**. This document is your full specification. The person who commissioned it will **not** read your code or answer technical questions. You must make the game yourself, end to end, at the quality and depth described here.
@@ -29,7 +31,7 @@ Then log the decision in `docs/DECISIONS.md` (one line: date, decision, reason).
 
 ### 0.3 Files you must create and keep updated
 
-- `docs/DESIGN.md` — a verbatim copy of this document. Never edit it. It is the source of truth.
+- `docs/DESIGN.md` — this document. It started as a verbatim copy of the original build prompt. **The commissioner's change requests override the original text**; when a change request arrives, the affected sections here are rewritten and the change is logged in `docs/DECISIONS.md`. Sections changed by **변경 요청 1 (2026-10-12)** are marked `[변경 1]`.
 - `docs/PROGRESS.md` — milestone checklist (Section 15) with each item ticked as done, plus known issues.
 - `docs/DECISIONS.md` — every judgment call you made.
 - `docs/CONTENT_INDEX.md` — a table of every letter, event, quest, evidence item and detail ID, with the file where it is implemented.
@@ -49,7 +51,7 @@ Never claim something works unless you ran it or a test proved it. If a test fai
 - **Do not ship placeholder text.** No `TODO`, `lorem`, `...`, `(대사)`, `[편지 내용]` in any player-facing string. All 72 letters, all dialogue, all event scenes must be fully written. There is a test for this (Section 15).
 - **Do not shrink the content to save effort.** If the spec says 72 letters, write 72. If it says 22 details, implement 22.
 - **Do not "improve" the story.** Do not add twists, villains, romance, supernatural elements, combat, or new characters with plot roles.
-- **Do not add real-time pressure** except where this document explicitly asks for it.
+- **Do not add real-time pressure** except where this document explicitly asks for it. `[변경 1]` The day clock (7.3) is explicitly asked for.
 - **Do not reveal the killer early.** Before Day 60 (the hearing), no line of text, UI, achievement name, file name visible to the player, or tooltip may state that Calvin is the killer.
 - **Do not build one giant file.** Keep systems in separate modules and content in data files.
 - **Do not skip verification.** Run the type-checker, linter and tests after every meaningful change.
@@ -97,13 +99,11 @@ For the first five weeks it plays as a warm, tactile life game: fish at dawn, so
 6. No grid/Tetris inventory or cargo puzzle. Sorting is a deck-sorting minigame (Section 8.3).
 7. Gifts never fix hatred. Gifts given to someone at 증오 or 냉담 make it worse.
 8. Earning a lot of money is never punished and never ends the game early. Paying off the debt early triggers a celebration, not an ending.
-9. The only failure state is bank repossession after **3 consecutive weeks of $0 payment** (Section 8.4).
+9. `[변경 1]` The only failure state is **bank repossession** (Section 8.4): a Friday shortfall not paid by Monday 17:00, or a second Friday shortfall in the season. It is a real game over with a restart from the last Friday save.
 10. Every story beat in Section 9 happens on its scheduled day regardless of money, quests, or relationship values. Optional content changes how much the player knows and how the hearing goes, never whether the main beats happen.
 11. Calvin's guilt is not stated to the player before Day 60. Clues may be visible; conclusions may not be written for the player.
 12. The finale's choice (Section 12) must be passive-by-default: if the player does nothing, the rope is not thrown.
 13. Tone: sunny pastel visuals, gentle music, warm humor on the surface. Dread comes only from implication and recontextualization. No jump scares.
-
----
 
 ## 3. Technical specification
 
@@ -170,7 +170,7 @@ Open with `F9` or URL `?debug=1`:
 
 ### 3.5 Save
 
-Autosave when the player sleeps. The save stores day, segment, money, debt schedule, all flags, feelings, quest states, letters read/burned, evidence, case-wall progress, decorations, purchases, and the deck-wear counter (Detail D07). Loading must restore the exact state.
+Autosave when the player sleeps. `[변경 1]` A separate save is kept every Friday morning (for "지난 금요일부터 다시 하기"). The save stores day, segment, money, debt schedule, all flags, feelings, quest states, letters read/burned, evidence, case-wall progress, decorations, purchases, and the deck-wear counter (Detail D07). Loading must restore the exact state.
 
 ---
 
@@ -231,9 +231,17 @@ Optional but nice: WebAudio-synthesized SFX (winch whirr, net splash, shrimp plo
 
 ### 5.2 Locations (town map nodes)
 
-`home` (Walt's house, run-down), `dock` (Mary Lou berth, cannery truck in mornings), `diner` (Rosa's), `church`, `bank`, `sheriff`, `fishMarket`, `secondhand` (Mabel), `pawn` (Vince), `pharmacy` (closed, June Pike's), `calvinCabin`, `gusHouse`, `edithHouse` (week 6+), `board` (town-square notice board), `lighthouse` (view only; the spot is offshore in front of it).
+`home` (Walt's house, run-down), `dock` (Mary Lou berth, cannery truck in mornings, Hank's bait stand at dawn), `diner` (Rosa's), `church`, `bank`, `sheriff`, `fishMarket`, `secondhand` (Mabel), `pawn` (Vince), `pharmacy` (closed, June Pike's), `calvinCabin`, `gusHouse`, `edithHouse` (week 6+), `board` (town-square notice board), `lighthouse` (view only; the spot is offshore in front of it), `dunes`.
 
-The town is a **clickable map with nodes**, not free-walk exploration. Clicking a node in the afternoon spends one afternoon slot and opens that location scene (a small illustrated room/area with the NPCs present per schedule and interactable objects).
+`[변경 1 — M2부터]` **The afternoon town is walkable**, not a clickable node map:
+- A top-down walking town. Arrow keys/WASD or click-to-move. The clock runs while walking and stops during dialogue and menus.
+- Townspeople actually walk their schedules.
+- Entering a building switches to that location scene.
+- Things to find while wandering: shells and sea glass on the beach (encyclopedia), 4 land fishing spots (pier end, breakwater, riverbank, beach), order deliveries, quests, small sights (cats, gulls).
+- Transport: walking → used bicycle $120 → pickup truck $600 (fast travel between parking spots).
+- At 19:00 Eli heads home naturally (auto-walk if outside, no penalty).
+- This replaces "2 afternoon slots / 3 with the truck" and the quests' "afternoon slot" wording everywhere in this document.
+- Until M2 ships, the M1 node map is kept as an interim: the clock runs on land, travel between nodes costs a little time, and 19:00 ends the afternoon.
 
 ### 5.3 Cast (display name — role — public face — hidden truth — voice)
 
@@ -318,22 +326,22 @@ Young bank loan officer. At first indifferent and rule-bound: every 1st of the m
 | 9 | 심리 | reversal |
 | 10 | 그 자리 | finale, epilogue, free play |
 
-### 7.3 The day (target ≈ 7 real minutes; segments are phase-based, not countdown timers)
+### 7.3 The day `[변경 1]` (clock-based; about 10–12 real minutes)
 
-| Segment | In-game time | Activity | Target real time |
+A clock is always visible at the top of the screen.
+
+| Time | Where | Activity | Clock |
 | --- | --- | --- | --- |
-| dawn | 04:00 | Harbor → choose ground on sea map → trawl | ~2:30 |
-| morning | 09:00 | Return → deck sorting → sell | ~1:30 |
-| afternoon | 13:00 | Town map: **2 slots** (3 with pickup truck) | ~2:00 |
-| evening | 19:00 | Home: letters, case wall, logbook, decorate | ~1:00 |
-| night | 23:00 | Sleep → day summary → autosave | seconds |
+| 04:00 | Dock | Wake up → dock. Harbor board (weather, tide, moon; orders from M2), Hank's bait stand. "오늘 할 일" card. **Eli chooses when to sail**; leaving later means less time at sea. | runs (land speed) |
+| sailing → 08:00 | Sea | Net and optional fishing (8.2, 8.14). At 08:00 a ship's horn, Gus: "돌아가자, 시장 닫힌다." The net comes up automatically and Mary Lou returns. | runs (sea speed) |
+| 08:00–09:00 | Deck/market | Deck sorting and selling. | stopped |
+| 09:00–19:00 | Town | Afternoon free time (5.2; walkable town from M2). Friday 17:00 = bank payment deadline. | runs (land speed) |
+| 19:00– | Home | Evening: letters, case wall, logbook, sleep. | stopped |
 
-Rules:
-- No visible countdown clocks. Trawl duration is player-controlled. Afternoon is slot-based. Evening is untimed.
-- Friday payment happens automatically at the end of the afternoon (no slot cost) with a short bank scene.
+- Speeds live in `config/tuning.ts`: **sea 1 real second = 1 game minute, land 1 real second = 2 game minutes**. The clock stops during dialogue, menus, sorting, letters and minigames.
+- This replaces the old "no visible countdown clocks" rule. There is still no punishment for being slow: the day simply moves on.
+- Friday payment happens at 17:00 (Section 8.4) with a short bank scene wherever Eli is.
 - Overnight, world-state changes are applied (Section 8.13) and are visible next morning.
-
----
 
 ## 8. Systems
 
@@ -357,12 +365,16 @@ All numbers below live in `config/tuning.ts` and are initial tuning values. Keep
 - Trying to select **theSpot** before Day 67: Gus (or after week 7, Eli's own hands) refuses with a short line. Each attempt logs to the logbook. Never allow it.
 - The fish finder (shop) shows shrimp density as soft blobs; in front of the lighthouse it shows **static noise like a fault** (Detail D21).
 
-### 8.2 Trawling (`scenes/Trawl`)
+### 8.2 The net (`scenes/Trawl`) `[변경 1]`
 
-- Side-view of Mary Lou with outriggers. Press to drop nets; hold/release to keep towing; press to haul.
-- **No numeric gauge.** Feedback is diegetic: winch pitch rises with load, the tow line vibrates, the boat tilts, Gus comments ("…무거워지네").
-- Longer tow → more catch, but snag chance rises per second depending on ground. A snag tears the net: haul is reduced by 30–60% and the net needs repair (afternoon slot at the dock, or $40 instant).
-- Target tow: 60–90 seconds for a good haul.
+- Pick a ground, drop the net. From then on it collects shrimp and fish **by itself**, from the same living water that fishing uses (8.14): fish that actually swim into the net become part of the haul.
+- The longer it stays down, the more it holds (it fills up toward its capacity); snag risk grows with time and depends on the ground (high near the wreck). A snag tears the net: the haul is reduced by 30–60% and the net needs repair (dock, or $40 instantly).
+- Haul with a button whenever you like. There is no separate time limit; at 08:00 it comes up automatically.
+- Each haul goes straight to deck sorting (clock stopped), then Eli can drop the net again or fish until 08:00.
+- While Gus is aboard (Days 1–44) he watches the net. From Day 45, a snag means Eli must go free it himself, which stops fishing.
+- **No numeric gauge.** Feedback is diegetic: winch pitch rises with load, the tow line vibrates, the boat tilts, Gus comments.
+- **Haul reveal** (9.x addictive device 2): first the bulging net is shown, the winch whines higher, and as it spills a grade appears: 보통 → 풍어 → 대박 → 전설의 그물. Occasionally a seahorse or a golden shrimp. 대박 and above briefly darken the screen, then burst.
+- The spot in front of the lighthouse: no net and no fishing before Day 67 (unchanged).
 
 ### 8.3 Deck sorting (the signature minigame, `scenes/Deck`)
 
@@ -377,6 +389,8 @@ All numbers below live in `config/tuning.ts` and are initial tuning values. Keep
 - **Gus sorts too** while he is aboard (Days 1–44): he moves about half the items himself at his own pace, and talks while sorting (this is where most Gus dialogue lives). From Day 45 the player sorts alone and it is visibly slower.
 - **Special items** occasionally appear among the catch. Story items appear on scheduled days (Section 9). Cosmetic curiosities (glass bottle, old coin, broken compass, doll head, rusty key, etc. — at least 12) appear rarely and can be placed on the home shelf. Any item dropped in the trash barrel is gone forever — this is intentional.
 - Target sorting time: 40–70 seconds.
+- `[변경 1]` **Sorting combo**: consecutive correct placements build a combo that raises the value of what goes into the baskets; icing the catch quickly gives a freshness bonus. Gus reacts as the combo grows: "…빠르네" → "제법인데?" → "네 아버지보다 낫다."
+- `[변경 1]` Shrimp come in three species — brown, white, pink — each in 소/중/대 (prices by size; species for the encyclopedia).
 
 ### 8.4 Economy (`systems/economy.ts`)
 
@@ -398,7 +412,7 @@ The player may prepay any amount at the bank on any afternoon (costs a slot).
 | 게 | $1.5 each |
 | curiosities | not sold (shelf) — pawnshop buys some for $5–15 |
 
-- Fuel: $5 per trip. Net repair: $40.
+- Fuel: $5 per trip. Net repair: $40. `[변경 1]` Fish caught by net or rod sell to the cannery truck at the fish-table price (8.14).
 - **Cannery oversupply:** after 450 lb sold to the cannery in one week, cannery prices drop ×0.8 for the rest of that week.
 - **Average target:** an average player earns ~$95–110/day in weeks 1–5 at the cannery, enough to pay $500/week with ~$150–250 surplus. A great player who opens the fish market (week 6+) can pay off the full debt around week 7–8.
 
@@ -410,13 +424,15 @@ The player may prepay any amount at the bank on any afternoon (costs a slot).
 | 마을 어시장 | ×2 | refuses Eli until fishermen's average feeling ≥ 40 AND week ≥ 6, OR after the hearing |
 | 로사의 식당 납품 | ×2 (max 30 lb/day) + Rosa says a line | Rosa ≥ 60 |
 
-**Safety nets (poor players)**
+**Payment rules `[변경 1]` (replace the old safety nets and "3 consecutive $0 Fridays")**
 
-1. Partial payment allowed.
-2. First time a payment is short: Priya grants one extension week: "대니얼이라면 이렇게 했을 거예요." (first Daniel hint)
-3. Gus's coffee can: if money < 50% of the due amount on a Friday (Days 7–42), Gus silently offers his savings ($150). Accepting sets `tookGusMoney`; after Gus vanishes this becomes a line in Eli's inner monologue: he can never pay it back.
-4. Sell Dad's things at the pawnshop (items listed in 8.5): money, but the linked memory scene and any linked clue are lost forever (the item is gone; rebuying is impossible once sold to a passing buyer after 3 days).
-5. Repossession ending only after **3 consecutive Fridays with $0 paid**. Warnings on the first and second.
+1. Day 1 at the bank Priya shows the repayment table and a large official notice: **"매주 금요일 오후 5시까지 정해진 금액을 내야 합니다. 기한을 넘기면 한 번은 경고, 두 번째는 메리 루 호 압류입니다. 압류되면 더 이상 이 마을에 머물 수 없습니다."** Priya explains: "아버님이 8년 전에 배 엔진을 고치려고 대출을 받으셨어요. 사건 이후로 한 번도 못 갚으셨고요." / "배를 팔아도 1,800달러 정도예요. 나머지 빚은 아드님께 남아요." (The request said "3년 전"; changed to "8년 전" because Walt has been in prison 6+ years and Daniel served the notice 7 years ago. See DECISIONS.)
+2. Always on screen, top right: "이번 주 상환 $500 · 모은 돈 $320 · 금요일까지 2일". The color shifts orange → red the further short Eli is. Thursday night Eli mutters "내일까지 180달러…" if short.
+3. Prepay any amount at the bank at any time during the afternoon.
+4. Friday 17:00: the week's amount is taken automatically. If it falls short (first time in the season): a red warning letter — pay the remainder **plus a 10% late fee by Monday 17:00**. Priya says "대니얼이라면 이렇게 했을 거예요." (first Daniel hint). This is also when Gus silently offers his coffee-can savings ($150; once per season, Days 1–44; accepting sets `tookGusMoney`).
+5. Not paid by Monday 17:00, **or** a second Friday shortfall in the season → **repossession = game over**. Screen: Mary Lou lifted away by a crane, Ledger flying off and vanishing, Calvin waving at the bus stop. Text: "메리 루 호가 압류되었습니다." Buttons: "지난 금요일부터 다시 하기" / "처음부터" / "타이틀로". A separate autosave is kept every Friday morning for this.
+6. Week 1's $250 must be easy to pay from the first week's fishing. An average player should almost never see a game over.
+7. Selling Dad's things at the pawnshop (8.5) remains a way to raise money (memory and clue lost).
 
 **Early payoff (great players)**
 
@@ -483,25 +499,45 @@ Changes:
 ### 8.8 Quests and the notebook (`systems/quests.ts`)
 
 Rules:
-1. The notebook always lists 1–3 active tasks, each with a **specific location and segment** ("내일 오후, 로사의 식당에 얼음 배달").
+1. The notebook always lists 1–3 active tasks, each with a **specific location and time** ("내일 오후, 로사의 식당에 얼음 배달").
 2. No quest is "talk to X". Every quest is doing something: carry, fix, haul, photograph, deliver, search, repair.
 3. Completing a quest naturally spawns the next one from inside it.
 4. The main line (debt, letters) is always pinned on top.
 
+`[변경 1]` Visibility:
+- A quest tracker is always on the right of the screen: the tracked quest (large) + up to 2 more (small). Each line shows the next action, place, time and progress, e.g. "로사의 얼음 — 통조림 트럭에서 얼음 받기 (부두, 09시 이후) 1/3".
+- Destinations show "!" ; from M2 (walking town) an edge arrow with distance when off-screen.
+- Above people's heads: yellow "!" = new quest, blue "…" = involved in a quest in progress, green "✔" = can complete.
+- New quest / step complete: a big banner at the top for 2 seconds, sound and sparkle.
+- Notebook tabs: **지금 상황** (8.16), **퀘스트** (메인 / 서브 / 오늘의 주문 — click to change the tracked quest), **지난 이야기** (8.15).
+- At 04:00, a "오늘 할 일" card: payment status, quests in progress, today's orders (M2), weather and tide.
+- Settings: guidance arrows/markers can be turned off.
+
 Full side-quest list is in Section 11.
 
-### 8.9 Dad's letters (`data/letters/*.ts`)
+### 8.9 Dad's letters (`data/letters/*.ts`) `[변경 1]`
 
-- **72 monthly letters** from death row, numbered L01–L72 (oldest first). They are in a box found on Day 2.
+- **72 monthly letters** from death row, numbered L01–L72 (oldest first, 1982년 5월 – 1988년 4월). They are in a box found on Day 2.
 - Each evening: 1 letter (2 on Sundays). Max 80 over the season, so a player who reads almost every night sees all 72.
 - Before opening, the player may choose **열기** or **태우기**. Burned letters are gone forever (a small ash sprite remains in the box).
 - Visuals: lined prison paper; handwriting jitter increases with letter number; censorship stamps ("검열필") increase from 0 at L01 to several by L60+ (D17).
-- Content requirements (each letter 120–350 Korean characters, written in Walt's voice):
-  - L01: first letter from death row. Clumsy. Includes a little drawing of a shrimp and **"아직도 새우 싫어하니?"** (D18).
-  - Spread across letters: prison daily life; Eli's childhood; Eli's mother and the name Mary Lou; Gus ("그 영감 무뚝뚝해도 너 어릴 때 업어 키웠다"); Rosa and Sal; fishing advice (some letters unlock a ground tip or a recipe); apologies he never finishes.
-  - **Daniel arc, told as memories, guilt-heavy:** L01–L15 he avoids the subject ("그 은행 녀석 얘긴 하지 말자"); L16–L35 he starts telling the story from the beginning ("처음엔 넥타이라고 불렀다", the seasick day, the breakfasts, naming the pelican); L36–L72 grief ("대니얼이 보고 싶다. 그 녀석을 그렇게 보낸 게 내 평생의 죄다."). He never explicitly describes the night; he only says he did something he cannot write.
-  - Walt **never** names Calvin as the killer in letters (prison mail is read; he was afraid). He may write a few oddly specific lines that become meaningful later (e.g. L50: "등대 앞엔 가지 마라. 고기가 없어서가 아니다.").
-  - L72: written the day before execution. Short. No drama. Ends with **"메리 루한테 잘해줘라."**
+
+**Writing rules (replace the old content requirements).** Walt is no talker but he means every word — rough and concrete.
+1. One letter = one story: one small prison fact + one old memory + one thing said to Eli.
+2. Only concrete things. Not "힘들다" or "보고 싶다" but "여기는 편지지를 한 달에 두 장 준다." Feelings hide behind facts.
+3. "미안" appears in at most 5 of the 72 letters. Mostly he starts to apologize and stops.
+4. Three or four letters in ten should make you smile — a gruff man's odd jokes.
+5. Varied length (120–400 characters). Varied sign-offs: "— 아빠", "아빠가", "월트", none.
+6. One or two letters in ten carry fishing information (fish-table conditions, legendary hints, ground tips, fish behavior) or a recipe, so reading helps play.
+7. Never the night itself and never Calvin's name (censored). Only, sometimes, one oddly specific line.
+8. Arc: L01–15 adjusting to prison and Eli's childhood / L16–35 Daniel's story from the beginning / L36–60 Gus, Rosa, Mary Lou, Mom / L61–72 a quiet ending.
+9. Written 12 at a time; after all 72, re-read in order and fix repetition and rule breaks. A test fails if more than 5 letters contain "미안".
+
+Fixed texts (use as written):
+- **L01:** 일라이에게. / 여기서는 편지지를 한 달에 두 장 준다. 한 장은 변호사한테 쓰고, 한 장은 너한테 쓴다. 변호사한테 쓰는 게 더 길다. 웃기지. / 네가 이걸 뜯을지 모르겠다. 안 뜯어도 괜찮다. 그래도 쓴다. / 창문이 북쪽이라 바다는 안 보인다. 대신 아침마다 갈매기 소리가 난다. 여기까지 갈매기가 오는 걸 보면, 바다가 아주 멀진 않은 모양이다. / 너 여덟 살 때 새우 까다가 운 거 기억하냐. 다리가 너무 많다고. / (새우 그림) / 아직도 새우 싫어하니? / — 아빠
+- **L20:** 그 녀석 처음 왔을 때 나는 넥타이라고 불렀다. 바닷가에 넥타이 매고 오는 놈은 은행원 아니면 장의사니까. / 매달 1일 아침 아홉 시 정각. 내 시계가 틀린 날은 있어도 그 녀석이 틀린 날은 없었다. 장부를 펴고, 숫자를 읽고, 고개를 끄덕이고, 갔다. / 거스 영감이 그러더라. 저놈은 웃는 법을 은행에 맡겨놨다고. / 다음 편지에 그 녀석이 배 탄 날 얘기를 해주마. 그날은 좀 웃겼다. / 아빠가
+- **L37:** 낚시 얘기나 하자. 굴 양식장 남쪽, 썰물 때. 거기 늙은 레드피시가 한 마리 있다. 거스가 "올드 레드"라고 부르는 놈이다. 30년 동안 아무도 못 잡았다. 비 온 다음 날 썰물에 거기 가봐라. 그놈은 미끼를 쫓아오지 않는다. 길목에 미끼를 두고 숨죽이고 기다려라. / 잡으면 거스한테 꼭 보여줘라. 영감 기절할 거다.
+- **L72:** 내일이다. / 쓸 말이 많을 줄 알았는데 생각이 안 난다. 편지지 두 장을 다 너한테 쓰려고 했는데, 한 장도 못 채운다. / 거스 영감 술 좀 줄이라고 해라. 장부 생선 부스러기 잊지 말고. 로사네 파이는 사과 말고 피칸이 맛있다. / 일라이. 넌 아무 잘못 없다. / 메리 루한테 잘해줘라.
 - **The cabin-floor message is NOT in the 72.** It is a separate **final letter delivered by lawyer Cole on Day 36** (Section 9): "메리 루를 팔지 마라. 선실 바닥을 보거라."
 
 ### 8.10 Dad's logbook (`systems/logbook.ts`)
@@ -562,6 +598,8 @@ Full side-quest list is in Section 11.
 - Treats increase how close he sits.
 - **Never takes food from Calvin.** First shown Day 10 at Calvin's cookout (scripted), and any time Calvin offers food later (D04).
 - After Day 45, sits next to Gus's coffee can if the player kept it (D08).
+- `[변경 1]` **Ledger as a guide**: on the sea map Ledger flies over a ground where a school or a rare fish is, and dives. Following him makes that ground's spawns richer that day. The more treats/bycatch he gets, the more accurate he is.
+
 
 ### 8.13 Overnight world state (`systems/details.ts`)
 
@@ -575,6 +613,103 @@ Applied at night, visible next morning:
 
 ---
 
+### 8.14 Fishing `[변경 1]` (`scenes/sea/SeaLife.ts`, `systems/fishSpawn.ts`, `systems/fight.ts`, `data/fish.ts`, `scenes/Trawl`)
+
+**When.** Optional, any time at sea: F key (or the rod button) toggles the fishing view. The net may be down or not. The sea clock keeps running while fishing — choosing where to spend the time is the decision. From M2 the same fishing works at 4 land spots (pier end, breakwater, riverbank, beach).
+
+**Screen.** The view splits: boat and surface on top, an underwater cross-section below with three layers (surface / middle / bottom). Spawned fish actually swim there: each species has its own color and silhouette and becomes clear as it comes close; shrimp are little pink dot swarms. Spawns use the same table as the net (ground, tide, time, weather, moon); fish enter from the sides, wander and leave. If the net is down, it is visibly dragged along the bottom layer and fish that swim into it become part of the haul. Bottom-type (C) fish stay low, jumpers (E) and needlefish near the surface, the rest mostly in the middle.
+
+**Controls.** Arrow keys/WASD move the bait; released, it sinks slowly, down to the line length. When a fish's mouth touches the bait a "!" pops above it and it shivers: press Space — within 0.3 s = perfect, within 0.7 s = good, later = the bait is stripped and the fish escapes. Then: common/uncommon come up with one press. Rare and above: a 2–5 s fight — hold the direction opposite to the pull and tap Space. Patterns: A straight / B side-to-side / C heavy toward the bottom / D sudden runs / E jumps (stop tapping while it jumps) / F weak. A perfect hook shortens the fight. Failure: the line breaks or the hook slips, the bait is lost, and the fish swims calmly away.
+
+**Behavior.** Curious (most): come to a still or slow bait. Shy (spotted seatrout, sheepshead, red snapper, flounder): flee fast bait — leave it in their path and wait. Hunters (bluefish, mackerels, jack crevalle, barracuda, tarpon): chase fast bait — make it flee. Bait thieves (hardhead catfish, pinfish, octopus): crowd and strip the bait — dodge them. Schools (croaker, spot, mullet): pass in groups, easy and cheap.
+
+**Bait and gear.** Bait types attract different fish and ranges: shrimp (most), live pinfish (big hunters), crab (sheepshead, black drum), shiny lure (trout, mackerels, hunters only). Bait is counted; stripped or lost bait is gone. Buy at Hank's bait stand at dawn, or use shrimp and pinfish from the net. Shop upgrades (M3): long line (deeper), strong line (easier fights), lure set (attract specific fish), fish finder (edge markers for off-screen fish). No rod holders.
+
+**Impact by rarity.**
+- Rare: a soft shimmer on appearance, a clear chime; sparkles and a fish card on catch.
+- Very rare: the screen edge glows gold on appearance; a brief slow-motion on hook; a special sound.
+- Legendary: on appearance the music fades out and everything but the area around the bait slowly darkens; a heartbeat; a huge shadow glides along the bottom; small text "무언가 거대한 것이…"; Gus holds his breath "…쉿.", Ledger flaps. On hook: white flash, shake, slow motion; the fight lasts 8–10 s in the dark. Success: the darkness lifts at once, the fish leaps from the surface, a full-screen lit fish card with a "전설" stamp and a fanfare; Gus reacts. Failure: the shadow sinks into the dark, light slowly returns, Gus: "…다음에 또 오겠지."
+- Fish card: name, size (inches), weight, a short encyclopedia line. First of a species: "NEW!" stamp; beating a record: "기록 갱신!". Release / keep.
+
+**The 36 fish** (`data/fish.ts`). Format: no. name (rarity) place / condition / size in / pattern / notes.
+
+| # | Fish | Rarity | Where | Condition | Size | Pattern | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 핀피시 | 흔함 | 부두·굴양식장 | 언제나 | 4–8 | F | 미끼 도둑, 미끼로 사용 가능 |
+| 2 | 크로커 | 흔함 | 모래톱·강하구 | 언제나 | 6–12 | F | 떼, 잡으면 "꾸룩" 소리 |
+| 3 | 스팟 | 흔함 | 모래톱 | 언제나 | 5–10 | F | 떼 |
+| 4 | 숭어 | 흔함 | 강하구·부두 | 밀물 | 8–16 | B | 떼 |
+| 5 | 바다메기 | 흔함 | 어디나 | 흐림 | 8–14 | C | 미끼 도둑, 너무 자주 걸려서 거스가 짜증 냄 |
+| 6 | 모래송어 | 흔함 | 모래톱 | 언제나 | 10–16 | B | |
+| 7 | 레이디피시 | 흔함 | 부두·강하구 | 맑음 | 14–24 | E | |
+| 8 | 블루피시 | 흔함 | 방파제 | 바람 | 12–20 | D | 사냥꾼 |
+| 9 | 얼룩송어 | 보통 | 굴양식장 | 05시 이전 | 14–24 | B | 겁쟁이 |
+| 10 | 레드피시 | 보통 | 굴양식장·강하구 | 썰물 | 18–30 | A | 꼬리 점 1~5개 변이, 점 개수별 도감 칸 |
+| 11 | 플라운더 | 보통 | 모래톱 바닥 | 썰물 | 12–20 | C | 겁쟁이 |
+| 12 | 쉽스헤드 | 보통 | 난파선·부두기둥 | 언제나 | 12–20 | C | 겁쟁이, 사람 이빨 같은 이빨 |
+| 13 | 블랙드럼 | 보통 | 강하구 | 흐림 | 14–30 | C | |
+| 14 | 걸프 킹피시 | 보통 | 해변 | 맑음 | 8–14 | F | |
+| 15 | 동갈치 | 보통 | 부두 수면 | 맑음 | 12–20 | B | |
+| 16 | 노랑가오리 | 보통 | 모래톱 바닥 | 언제나 | 12–24 | C | 놓아주기 |
+| 17 | 스페인고등어 | 보통 | 깊은수로 | 맑음·바람없음 | 14–24 | D | 사냥꾼 |
+| 18 | 잭 크레발 | 보통 | 깊은수로 | 언제나 | 18–36 | D | 사냥꾼, 엄청 셈 |
+| 19 | 복어 | 보통 | 부두 | 맑음 | 6–10 | F | 잡으면 빵빵하게 부풂 |
+| 20 | 문어 | 보통 | 난파선 바닥 | 흐림 | 6–18 | C | 미끼 도둑 |
+| 21 | 트리플테일 | 드묾 | 떠다니는 부표·나무 옆 수면 | 맑음 | 14–24 | A | |
+| 22 | 레드스내퍼 | 드묾 | 난파선 | 언제나 | 16–28 | A | 겁쟁이 |
+| 23 | 갱 그루퍼 | 드묾 | 난파선 바닥 | 흐림 | 20–36 | C | |
+| 24 | 코비아 | 드묾 | 깊은수로·가오리 근처 | 1~4주차 | 30–50 | D | |
+| 25 | 킹고등어 | 드묾 | 깊은수로 | 보름 | 30–45 | D | 사냥꾼 |
+| 26 | 바라쿠다 | 드묾 | 난파선 | 맑음 | 30–48 | D | 사냥꾼 |
+| 27 | 보닛헤드 상어 | 드묾 | 모래톱 | 맑음 | 24–36 | A | 놓아주기 |
+| 28 | 해마 | 드묾 | 그물로만 | — | 3–6 | — | |
+| 29 | 미국뱀장어 | 드묾 | 강하구·강가 바닥 | 비 온 다음 날 | 18–30 | B | |
+| 30 | 만새기 | 드묾 | 깊은수로 끝 해초 띠 | 6주차 이후 맑음 | 24–40 | E | |
+| 31 | 황금 크로커 | 아주 드묾 | 모래톱 | 아주 낮은 확률 | 8–12 | F | 행운의 물고기 |
+| 32 | 흰 바다메기 | 아주 드묾 | 어디나 | 비 | 10–16 | C | 알비노 |
+| 33 | 은빛 왕·타폰 | 전설 | 깊은수로 | 보름 + 출항 후 30분 안 | 60–80 | E | 사냥꾼, 놓아주기 |
+| 34 | 올드 레드·황소 레드피시 | 전설 | 굴양식장 | 썰물 + 비 온 다음 날 | 40–50 | A | 거스가 30년 동안 못 잡은 고기. 1~44일차에 잡으면 거스가 처음으로 일라이를 안아주는 특별 장면, 이후엔 일라이 혼자 "영감, 잡았어." |
+| 35 | 골리앗 그루퍼 | 전설 | 난파선 가장 깊은 곳 | 흐림 + 보름 | 60–90 | C | 너무 커서 사진만 찍고 놓아줌 |
+| 36 | 할아버지 드럼 | 전설 | 강하구 | 비 + 밀물 | 40–60 | C | 아버지 편지에 힌트 |
+
+- Shrimp (net only): brown, white, pink × 소·중·대.
+- Prices: common $2–6, uncommon $8–20, rare $25–60. Legendaries cannot be sold: release, photograph, or mount.
+- Mounting: leave a fish with Mabel for $40 and hang it on the wall at home (M2).
+
+**Economy.** The net is the base income; fishing is a bonus and a hunt for rare fish. An average player pays every Friday with the net plus moderate fishing; a great player pays off the debt in week 6–7. The economy simulation test (poor/average/great) uses this structure.
+
+### 8.15 Dialogue `[변경 1]`
+
+- While text is typing, click/Space/Enter shows the whole line; once more goes to the next line.
+- Holding the key/button fast-forwards; it stops at choices.
+- A "건너뛰기 ▶▶" button at the top right of the dialogue box (Tab) skips to the end of the scene — or to just before the next choice.
+- Every event has a `summary` (1–2 Korean sentences). Skipped scenes leave their summary in the notebook's "지난 이야기" tab. A test fails if any event's summary is empty.
+- L key or the "기록" button: the last 100 lines. Settings: text speed 느림/보통/빠름/즉시.
+
+### 8.16 Prologue and "지금 상황" `[변경 1]`
+
+**Prologue picture book** right after New Game, about 2 minutes, skippable. One picture + one sentence per page (procedural art until real art arrives):
+1. Eli lying on a sofa in a city studio / "일라이 할로우, 서른두 살. 직업 없음. 오늘도 친구 집 소파."
+2. A ringing phone / "10년 만에 고향에서 전화가 왔다."
+3. A newspaper with a cropped photo / "펠리컨 코브 연쇄 실종 사건 범인, 오늘 사형 집행. 범인의 이름은 월트 할로우. 일라이의 아버지다."
+4. A pile of unopened letters / "아버지는 6년 동안 감옥에서 매달 편지를 보냈다. 일라이는 한 통도 뜯지 않았다."
+5. A seaside town through a bus window / "장례식만 치르고 바로 돌아올 생각이었다."
+6. The old boat Mary Lou / "아버지가 남긴 건 낡은 배 한 척. 그리고 그 배에 묶인 은행 빚 4,250달러."
+7. A bank counter / "배를 팔아도 빚을 다 갚을 수 없다. 방법은 하나. 이번 새우잡이 철 10주 동안 배를 몰아서 갚는 것."
+8. Townspeople glaring on the dock / "그리고 이 마을 사람들은, 살인마의 아들을 반기지 않는다."
+
+**Notebook "지금 상황" tab** — one page, always available, updated with progress: 나는 누구 / 여기 있는 이유 / 이번 주 상환 (amount, money saved) / 아버지 사건 (from week 6 adds "그런데 이상한 점이 있다…") / 만난 사람 (face, one-line intro, relationship state).
+
+### 8.17 Addictive devices `[변경 1]`
+
+1. Ledger as a guide (8.12). — now
+2. Haul reveal grades (8.2). — now
+3. Sorting combo and freshness (8.3). — now
+4. (M2) Harbor board: today's orders (Rosa's diner, the cannery, townspeople) and this week's fishermen ranking. Eli's name starts at the bottom, scribbled out. Climbing the ranking changes the fishermen's attitude; at #1 Hank speaks to him for the first time: "…어디서 잡았냐?". Orders from people who hate Eli can be filled anonymously.
+5. (M2) Encyclopedia and tomorrow's forecast: 36 fish + shrimp + curiosities + beach finds. Before sleep the radio forecasts tomorrow's weather, tide, moon and good fish ("내일은 보름에 썰물. 레드피시가 굴 양식장에 몰립니다.").
+
+---
+
 ## 9. Master event timeline
 
 Day numbers are fixed. "seg" = segment. Each beat is a scripted event with an ID. Write every scene fully.
@@ -583,7 +718,7 @@ Day numbers are fixed. "seg" = segment. Each beat is a scripted event with an ID
 | Day | ID | Seg | Beat |
 | --- | --- | --- | --- |
 | 1 Sat | W1_FUNERAL | morning | Funeral, under 3 minutes. Only Gus (at the back, leaves without a word), Toby (helps carry the coffin, whistling stops when he notices), Calvin (shakes hands: "아버님 사건, 제가 맡았었어요. 미안해요. 필요한 거 있으면 말해요."). |
-| 1 | W1_BANK | morning | Priya: the boat can't cover the debt; one season of fishing is the only way. |
+| 1 | W1_BANK | morning | Priya: the boat can't cover the debt; one season of fishing is the only way. `[변경 1]` Shows the repayment table and the official notice (8.4). |
 | 1 | W1_FIRST_TRIP | afternoon | Gus, grumbling: "배 팔 거면 상태라도 보고 팔아." Short first trawl at gusSpot; the deck overflows with shrimp. **Ledger lands on the rail.** Tutorial is diegetic through Gus. |
 | 2 Sun | W1_FIRST_SALE | morning | Sell to Dewey's cannery truck. First money. Fish market refuses: "살인마 새우는 안 받아." |
 | 2 | W1_LETTER_BOX | evening | Eli finds the box of 72 letters and the trial file (case wall unlocked). First choice: open or burn L01. |
@@ -591,7 +726,7 @@ Day numbers are fixed. "seg" = segment. Each beat is a scripted event with an ID
 | 4 Tue | W1_LOGBOOK_X | evening | Logbook first page rule; X on the map; torn page noticed. Same day Calvin, in passing: "등대 앞은 가지 마요. 거긴 고기가 하나도 없어." |
 | 5 Wed | W1_BOTTLE | morning | Bottle in the net: Maisie's note about her dog Biscuit → quest Q_BOTTLE. |
 | 6 Thu | W1_KNOT_LESSON | dawn | Gus's first knot lesson (net-mending minigame). If done well: "…나쁘지 않네." |
-| 7 Fri | W1_PAYMENT | afternoon | First payment ($250). Weekly summary screen (earned, paid, shrimp stolen by Ledger). In Priya's drawer: **Daniel's nameplate** (visible, unremarked). |
+| 7 Fri | W1_PAYMENT | afternoon (17:00) | First payment ($250). Weekly summary screen (earned, paid, shrimp stolen by Ledger). In Priya's drawer: **Daniel's nameplate** (visible, unremarked). |
 
 ### Weeks 2–4 — 바다
 | Day | ID | Beat |
@@ -728,7 +863,7 @@ Minor optional tasks (repeatable, light): net repair, hull painting, crab traps,
 | --- | --- | --- |
 | **기본 결말 (바다가 데려갔다)** | rope not thrown | Calvin sinks with what he hid. Days later at the diner, people say Calvin vanished in the storm. Rosa, pouring coffee, flatly: **"바다가 데려갔나 보죠."** Eli and Rosa's eyes meet; neither speaks. Sal's mug is off its hook for the first time (D14). Outside, Ledger lands on Mary Lou's rail. Candles remain. |
 | **법의 결말** | rope thrown | Calvin is pulled aboard alive and arrested. The things he was moving lead state police to "내 자리": Gus and the missing are found. Lucia Reyes gets her son back and, for the first time, nods to Eli. Candles are replaced by name cards (D13). Walt's name is cleared, but the night he sent Daniel back to sea remains true. Eli returns Daniel's watch and Walt's letters about Daniel to the Webbs. |
-| **압류 결말** | 3 consecutive $0 Fridays | Eli takes the bus out of town. At the stop, Calvin waves. Credits. (Offer reload.) |
+| **압류 결말** `[변경 1]` | a Friday shortfall unpaid by Monday 17:00, or a second Friday shortfall | Mary Lou is lifted away by a crane, Ledger flies off and vanishes, Calvin waves at the bus stop. "메리 루 호가 압류되었습니다." Buttons: 지난 금요일부터 다시 하기 / 처음부터 / 타이틀로. |
 
 Both main endings → credits → free play to Day 70 → season-end card: **"다음 철에도 메리 루는 바다에 나간다."**
 
@@ -790,6 +925,11 @@ Work in this order. Do not start a milestone until the previous one passes its c
 - [ ] Palette, Korean font loading with fallback, procedural sprites for all 10 signature characters.
 
 ### M1 — Core loop vertical slice (must be fun)
+- [ ] `[변경 1]` Dialogue skip/fast-forward/scene skip/log/text speed, event summaries (8.15).
+- [ ] `[변경 1]` Prologue picture book, Day 1 bank repayment table and notice, notebook "지금 상황" (8.16).
+- [ ] `[변경 1]` Payment rules with warning, late fee, repossession game over and Friday save (8.4).
+- [ ] `[변경 1]` Day clock (7.3), net that collects by itself (8.2), optional fishing with 36 fish, bait, fights and rarity effects (8.14).
+- [ ] `[변경 1]` Quest tracker, banners, notebook tabs, "오늘 할 일" card (8.8). Ledger guide, haul grades, sorting combo (8.17 1–3). Letters L01–L12 rewritten to the new rules.
 - [ ] Harbor dawn board (tide/moon/weather), sea map with grounds, trawl scene with diegetic feedback (no numeric gauge), snags and net repair.
 - [ ] Deck sorting with all bins, turtles, Ledger stealing and catching, Gus co-sorting with lines.
 - [ ] Selling to the cannery, Friday payment, weekly summary.
@@ -797,20 +937,21 @@ Work in this order. Do not start a milestone until the previous one passes its c
 - [ ] Self-check: a 30-second trawl + sort + sell feels satisfying (juicy feedback: splash, plop, cash bell, particles, screen-shake-free gentle motion).
 
 ### M2 — Town and people
+- [ ] `[변경 1]` Walkable afternoon town with walking NPCs, land fishing spots, bicycle/truck (5.2). Harbor board orders and ranking, encyclopedia and radio forecast (8.17 4–5). Mounting at Mabel's. Letters L13–L36 to the new rules.
 - [ ] Town map nodes, location scenes, schedules, feelings with visible state icons, dialogue system with variants.
 - [ ] Notebook with rules from 8.8. Quests Q_BOTTLE through Q_BLESSING.
-- [ ] Letters system with burn choice; letters L01–L36 fully written. Logbook.
+- [ ] Letters system with burn choice; letters L01–L36 fully written (8.9 rules). Logbook.
 - [ ] Weeks 2–5 events, including the festival with both outcomes.
 
 ### M3 — Economy and spending
 - [ ] All shop items (8.5) working with effects. House and boat decoration persists.
-- [ ] Safety nets, early payoff scene, repossession ending.
-- [ ] **Economy simulation test**: poor / average / great profiles over 63 days. Assert: poor can avoid repossession using safety nets; average pays every Friday while spending ≥ 1 afternoon slot/day on non-economic activities; great reaches $0 debt by Day 56 at the latest. Adjust tuning until true and log changes.
+- [ ] Payment rules (8.4), early payoff scene, repossession ending.
+- [ ] **Economy simulation test**: poor / average / great profiles over 63 days. Assert `[변경 1]`: average pays every Friday on time with the net plus moderate fishing; great reaches $0 debt in week 6–7; poor survives using the warning week and Gus's coffee can. Adjust tuning until true and log changes.
 
 ### M4 — The cracks and the investigation
 - [ ] Case wall with all statements/evidence (8.11).
 - [ ] Weeks 6–8 events, Gus confession with the camera break, mob scene, Toby clues and arrest.
-- [ ] Letters L37–L72 and the final lawyer letter fully written.
+- [ ] Letters L37–L72 (8.9 rules, L37 and L72 fixed texts) and the final lawyer letter fully written.
 - [ ] Quests Q_EDITH, Q_POSTER.
 
 ### M5 — Hearing, finale, endings

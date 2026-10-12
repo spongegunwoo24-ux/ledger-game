@@ -9,11 +9,14 @@ import { hash32, makeRng, pick, range, type Rng } from '../core/rng';
 import { owns } from '../core/state';
 import type { GroundId } from '../core/types';
 import { initView } from '../core/view';
-import { curiosityDef, SIZE_LABEL, STORY_CATCH, type CatchItem } from '../data/catch';
+import { fmtTime, seaEndTime } from '../core/clock';
+import { curiosityDef, SHRIMP_TINT, SIZE_LABEL, STORY_CATCH, type CatchItem, type ShrimpSpecies } from '../data/catch';
+import { fishTexKey } from '../art/fish';
+import { fishDef, fishPrice } from '../data/fish';
 import { GUS_DECK_LINES, GUS_REJECT_HINTS, GUS_TUTORIAL_DECK, GUS_WRONG_BASKET } from '../data/dialogue/gusDeck';
 import { CHAR_NAMES } from '../data/names';
 import { addTallyToHold } from '../systems/economy';
-import { correctBin, emptyTally, placeItem, recordOutcome, type BinId, type SortTally } from '../systems/sorting';
+import { correctBin, emptyTally, isComboHit, placeItem, recordOutcome, soldAs, type BinId, type SortTally } from '../systems/sorting';
 import { Bubble } from '../ui/Bubble';
 import { Button, panel } from '../ui/Button';
 import { Toasts } from '../ui/Dialogue';
@@ -26,6 +29,8 @@ export interface DeckData {
   ground: GroundId;
   towIndex: number;
   tutorial?: boolean;
+  /** last haul of the morning (08:00) */
+  final?: boolean;
   towSeconds?: number;
 }
 
@@ -39,12 +44,13 @@ interface BinDef {
 }
 
 const BINS: BinDef[] = [
-  { id: 'small', x: 170, y: 632, r: 70, key: 'bin_basket_small', label: '소' },
-  { id: 'medium', x: 330, y: 632, r: 70, key: 'bin_basket_medium', label: '중' },
-  { id: 'large', x: 490, y: 632, r: 70, key: 'bin_basket_large', label: '대' },
-  { id: 'crab', x: 660, y: 632, r: 60, key: 'bin_bucket', label: '게' },
-  { id: 'keep', x: 820, y: 636, r: 60, key: 'bin_crate', label: '챙김' },
-  { id: 'trash', x: 990, y: 628, r: 60, key: 'bin_barrel', label: '쓰레기' },
+  { id: 'small', x: 130, y: 632, r: 62, key: 'bin_basket_small', label: '소' },
+  { id: 'medium', x: 268, y: 632, r: 62, key: 'bin_basket_medium', label: '중' },
+  { id: 'large', x: 406, y: 632, r: 62, key: 'bin_basket_large', label: '대' },
+  { id: 'crab', x: 540, y: 632, r: 56, key: 'bin_bucket', label: '게' },
+  { id: 'fish', x: 668, y: 632, r: 56, key: 'bin_icebox', label: '생선' },
+  { id: 'keep', x: 800, y: 636, r: 56, key: 'bin_crate', label: '챙김' },
+  { id: 'trash', x: 940, y: 628, r: 56, key: 'bin_barrel', label: '쓰레기' },
 ];
 
 const LEDGER_PERCH = { x: 780, y: 152 };
@@ -62,6 +68,11 @@ interface DeckItem {
 }
 
 /** Deck sorting — the signature minigame. */
+function fishPriceOf(f: { id: string; inches: number }): number {
+  const d = fishDef(f.id);
+  return d ? fishPrice(d, f.inches) : 0;
+}
+
 export class DeckScene extends Phaser.Scene {
   private d!: DeckData;
   private rng!: Rng;
@@ -86,6 +97,8 @@ export class DeckScene extends Phaser.Scene {
   private startTime = 0;
   private tutorialLines: string[] = [];
   private ledgerPresent = true;
+  private combo = 0;
+  private comboText!: Phaser.GameObjects.Text;
 
   constructor() {
     super('Deck');
@@ -102,6 +115,7 @@ export class DeckScene extends Phaser.Scene {
     this.binFill = {};
     this.binImgs = {};
     this.finished = false;
+    this.combo = 0;
     this.tutorialLines = d.tutorial ? [...GUS_TUTORIAL_DECK] : [];
   }
 
@@ -117,6 +131,9 @@ export class DeckScene extends Phaser.Scene {
     this.bubble = new Bubble(this, 760);
     this.eliBubble = new Bubble(this, 761);
     this.toasts = new Toasts(this);
+    this.comboText = txt(this, 540, 555, '', { size: 24, fontFamily: FONT_TITLE, color: '#3B3355', stroke: '#FFFAF0', strokeThickness: 5 })
+      .setOrigin(0.5)
+      .setDepth(700);
     this.startTime = this.time.now;
     this.lastFed = this.time.now;
     this.lastSteal = this.time.now;
@@ -214,13 +231,15 @@ export class DeckScene extends Phaser.Scene {
       const hx = PILE.x + Math.cos(a) * PILE.rx * r;
       const hy = PILE.y + Math.sin(a) * PILE.ry * r;
       const key = this.texFor(item);
-      const scale = item.kind === 'turtle' ? 1.1 : item.kind === 'curio' || item.kind === 'story' ? 1.3 : 1.15;
+      const scale =
+        item.kind === 'fish' ? Math.min(1.3, (34 + (item.inches ?? 8) * 1.5) / 100) : item.kind === 'turtle' ? 1.1 : item.kind === 'curio' || item.kind === 'story' ? 1.3 : 1.15;
       const img = this.add
         .image(hx + range(this.rng, -40, 40), -40 - range(this.rng, 0, 200), key)
         .setScale(scale / TEX_SCALE)
         .setAngle(range(this.rng, -180, 180))
         .setDepth(20 + Math.floor(hy / 10));
       img.setData('baseScale', scale / TEX_SCALE);
+      if (item.kind === 'shrimp' && !item.golden && item.id) img.setTint(SHRIMP_TINT[item.id as ShrimpSpecies] ?? 0xffffff);
       img.setData('idx', i);
       const di: DeckItem = { item, img, home: { x: hx, y: hy }, held: false, claimed: false, done: false };
       this.items.push(di);
@@ -256,11 +275,11 @@ export class DeckScene extends Phaser.Scene {
   private texFor(item: CatchItem): string {
     switch (item.kind) {
       case 'shrimp':
-        return `it_shrimp_${item.size}`;
+        return item.golden ? 'it_goldshrimp' : `it_shrimp_${item.size}`;
       case 'crab':
         return 'it_crab';
       case 'fish':
-        return `it_fish_${item.id}`;
+        return fishTexKey(item.id ?? 'pinfish');
       case 'trash':
         return `it_trash_${item.id}`;
       case 'turtle':
@@ -332,13 +351,20 @@ export class DeckScene extends Phaser.Scene {
     it.done = true;
     img.disableInteractive();
     this.tweens.killTweensOf(img);
-    recordOutcome(this.tally, it.item, bin, outcome);
     const s = G.state;
+    if (outcome === 'fishKept' && it.item.id === 'pinfish') {
+      // pinfish on ice become live bait
+      s.bait.pinfish = (s.bait.pinfish ?? 0) + 1;
+      if (by === 'eli') this.toasts.show('살아있는 미끼 +1', PALETTE.mint);
+    } else recordOutcome(this.tally, it.item, bin, outcome);
+    if (outcome === 'fed') s.ledgerFed += 1;
+    if (by === 'eli') this.comboStep(it.item, bin, outcome);
 
     switch (outcome) {
       case 'basket':
       case 'basketLow':
       case 'crab':
+      case 'fishKept':
       case 'kept':
       case 'trashed':
       case 'lost':
@@ -623,6 +649,37 @@ export class DeckScene extends Phaser.Scene {
     });
   }
 
+  /** [변경 1] sorting combo + freshness bonus (addictive device 3) */
+  private comboStep(item: CatchItem, bin: BinId, outcome: ReturnType<typeof placeItem>) {
+    const C = TUNING.combo;
+    if (!isComboHit(outcome, item)) {
+      if (this.combo >= 5) this.comboText.setText('콤보 끊김').setColor('#9a96a8');
+      this.combo = 0;
+      return;
+    }
+    this.combo += 1;
+    const s = G.state;
+    s.bestCombo = Math.max(s.bestCombo, this.combo);
+    if (item.kind === 'shrimp' && (outcome === 'basket') && !item.golden) {
+      const size = soldAs(item, bin);
+      const value = TUNING.prices[size] * TUNING.trawl.lbsPerShrimpItem;
+      const secs = (this.time.now - this.startTime) / 1000;
+      const fresh = secs < C.fresh1Sec ? C.fresh1 : secs < C.fresh2Sec ? C.fresh2 : 0;
+      const pct = Math.min(C.max, this.combo * C.perStep) + fresh;
+      this.tally.bonus = Math.round((this.tally.bonus + value * pct) * 100) / 100;
+    }
+    if (this.combo >= 3) {
+      const pct = Math.round(Math.min(C.max, this.combo * C.perStep) * 100);
+      this.comboText.setText(`콤보 ${this.combo}  +${pct}%`).setColor(this.combo >= 20 ? '#D7263D' : this.combo >= 10 ? '#e07b2a' : '#3B3355');
+      this.tweens.add({ targets: this.comboText, scale: { from: 1.3, to: 1 }, duration: 160 });
+    }
+    const lines: Record<number, string> = { 10: '…빠르네.', 20: '제법인데?', 35: '네 아버지보다 낫다.' };
+    if (lines[this.combo] && this.gusAboard) {
+      this.lastHint = 0;
+      this.bubble.say(GUS_POS.x - 20, GUS_POS.y - 160, `${CHAR_NAMES.gus}: ${lines[this.combo]}`, 2600, true);
+    }
+  }
+
   /** Debug/test helper: sort everything left correctly. */
   autoAll() {
     for (const it of this.items) {
@@ -650,39 +707,40 @@ export class DeckScene extends Phaser.Scene {
     const c = this.add.container(0, 0).setDepth(1000);
     const shade = this.add.rectangle(0, 0, 1280, 720, PALETTE.ink, 0.35).setOrigin(0).setInteractive();
     const g = this.add.graphics();
-    panel(g, 340, 110, 600, 500, 0xfff3d6, 24);
+    panel(g, 340, 90, 600, 580, 0xfff3d6, 24);
     c.add([shade, g]);
-    c.add(txt(this, 640, 156, '정리 끝', { size: 36, fontFamily: FONT_TITLE }).setOrigin(0.5));
+    c.add(txt(this, 640, 128, '정리 끝', { size: 36, fontFamily: FONT_TITLE }).setOrigin(0.5));
     const lbs = (k: 'small' | 'medium' | 'large') => `${t.lbs[k].toFixed(1)} lb`;
     const rows: [string, string][] = [
       [`새우 ${SIZE_LABEL.small}`, lbs('small')],
       [`새우 ${SIZE_LABEL.medium}`, lbs('medium')],
       [`새우 ${SIZE_LABEL.large}`, lbs('large')],
       ['게', `${t.crabs}마리`],
+      ['생선', `${t.fish.length}마리${t.fish.length ? ` ($${t.fish.reduce((a, f) => a + fishPriceOf(f), 0).toFixed(0)})` : ''}`],
+      ['콤보·신선도 보너스', `$${t.bonus.toFixed(2)}`],
       ['장부가 훔친 새우', `${t.stolen}마리`],
       ['장부에게 던져 준 잡어', `${t.fed}마리`],
       ['바다로 돌려보낸 거북', `${t.turtlesSaved}마리`],
     ];
+    if (t.golden) rows.push(['황금 새우', `${t.golden}마리!`]);
     if (t.kept.length) rows.push(['챙긴 물건', t.kept.map((k) => curiosityDef(k)?.name ?? k).join(', ')]);
     rows.forEach(([a, b], i) => {
-      c.add(txt(this, 400, 200 + i * 40, a, { size: 22 }));
-      c.add(txt(this, 880, 200 + i * 40, b, { size: 22, color: '#2d5fa8' }).setOrigin(1, 0));
+      c.add(txt(this, 390, 168 + i * 34, a, { size: 20 }));
+      c.add(txt(this, 890, 168 + i * 34, b, { size: 20, color: '#2d5fa8' }).setOrigin(1, 0));
     });
     const secs = Math.round((this.time.now - this.startTime) / 1000);
-    c.add(txt(this, 640, 200 + rows.length * 40 + 8, `${secs}초 걸렸다.`, { size: 16, color: '#9a96a8' }).setOrigin(0.5, 0));
-    const canTowAgain = owns(s, 'icebox') && this.d.towIndex === 0 && s.segment === 'dawn';
-    const back = new Button(this, canTowAgain ? 520 : 640, 560, '항구로 돌아가기', () => this.leave(), { w: 240, h: 56, fill: PALETTE.mint });
-    c.add(back);
-    if (canTowAgain) {
-      const again = new Button(
-        this,
-        780,
-        560,
-        '한 번 더 끌기',
-        () => this.scene.start('Trawl', { ground: this.d.ground, towIndex: 1 }),
-        { w: 220, h: 56, fill: PALETTE.butter, sub: '얼음 상자' },
+    c.add(txt(this, 640, 168 + rows.length * 34 + 4, `${secs}초 · 최고 콤보 ${s.bestCombo}`, { size: 16, color: '#9a96a8' }).setOrigin(0.5, 0));
+    const final = this.d.final || s.time >= seaEndTime(s.day) - 1;
+    if (final) {
+      c.add(new Button(this, 640, 620, '항구로 돌아가기', () => this.leave(), { w: 260, h: 56, fill: PALETTE.mint }));
+    } else {
+      c.add(new Button(this, 530, 620, '다시 바다로', () => this.scene.start('Trawl', { ground: this.d.ground, tutorial: this.d.tutorial }), { w: 220, h: 56, fill: PALETTE.coral, sub: `지금 ${fmtTime(s.time)} · ${fmtTime(seaEndTime(s.day))}까지` }));
+      c.add(
+        new Button(this, 780, 620, '일찍 귀항', () => {
+          s.time = Math.max(s.time, seaEndTime(s.day));
+          this.leave();
+        }, { w: 200, h: 56, fill: 0xfff3d6, sub: '시장으로' }),
       );
-      c.add(again);
     }
     c.setAlpha(0);
     this.tweens.add({ targets: c, alpha: 1, duration: 250 });
@@ -691,6 +749,7 @@ export class DeckScene extends Phaser.Scene {
   }
 
   private leave() {
+    G.trip = null;
     this.cameras.main.fadeOut(400, 21, 18, 31);
     this.cameras.main.once('camerafadeoutcomplete', () => endSegment(this));
   }

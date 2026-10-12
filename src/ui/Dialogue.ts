@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { PALETTE, FONT_UI } from '../art/palette';
 import { TEST_MODE } from '../core/view';
+import { holdClock, releaseClock } from '../core/clock';
+import { getSettings, TEXT_SPEED_MS } from './settings';
 import { portraitKey } from '../art/characters';
 import { CHAR_NAMES, CHAR_NAMES_EN } from '../data/names';
 import { sfx } from '../audio/sfx';
@@ -11,9 +13,19 @@ const DEPTH = 900;
 
 export type LineKind = 'say' | 'think' | 'narrate';
 
+/** [변경 1] The last 100 lines, kept for the "기록" view (not saved). */
+export const DIALOGUE_LOG: { who: string; text: string }[] = [];
+
+export function logLine(kind: LineKind, text: string, who?: string) {
+  const name = kind === 'say' && who ? (CHAR_NAMES[who] ?? who) : kind === 'think' ? '일라이 (속으로)' : '';
+  DIALOGUE_LOG.push({ who: name, text });
+  while (DIALOGUE_LOG.length > 100) DIALOGUE_LOG.shift();
+}
+
 /**
  * Bottom dialogue box with portrait, name tag and typewriter text.
- * Each line resolves when the player clicks / presses Space after it finished typing.
+ * [변경 1] click/Space/Enter completes the line, again → next line; holding fast-forwards;
+ * "건너뛰기 ▶▶" (Tab) skips to the end of the scene or to the next choice; L / "기록" shows the log.
  */
 export class DialogueBox {
   private c: Phaser.GameObjects.Container;
@@ -26,15 +38,29 @@ export class DialogueBox {
   private body: Phaser.GameObjects.Text;
   private arrow: Phaser.GameObjects.Text;
   private catcher: Phaser.GameObjects.Zone;
+  private skipBtn: Button;
+  private logBtn: Button;
   private seenNames = new Set<string>();
   private typing: Phaser.Time.TimerEvent | null = null;
   private full = '';
   private resolve: (() => void) | null = null;
-  private keyHandler: (e: KeyboardEvent) => void;
+  private keyDown: (e: KeyboardEvent) => void;
+  private keyUp: (e: KeyboardEvent) => void;
+  private holdStart = 0;
+  private holding = false;
+  private holdTimer: Phaser.Time.TimerEvent;
+  private shownAt = 0;
+  /** set by the skip button; the runner fast-forwards until a choice */
+  skipping = false;
 
   constructor(private scene: Phaser.Scene) {
     this.catcher = scene.add.zone(0, 0, 1280, 720).setOrigin(0).setDepth(DEPTH - 1).setInteractive();
-    this.catcher.on('pointerdown', () => this.advance());
+    this.catcher.on('pointerdown', () => {
+      this.startHold();
+      this.advance();
+    });
+    this.catcher.on('pointerup', () => this.endHold());
+    this.catcher.on('pointerout', () => this.endHold());
     this.c = scene.add.container(0, 0).setDepth(DEPTH);
     this.g = scene.add.graphics();
     this.c.add(this.g);
@@ -53,16 +79,60 @@ export class DialogueBox {
     this.arrow = txt(scene, 1170, 680, '▼', { size: 18, color: '#3B3355' }).setOrigin(0.5);
     this.c.add(this.arrow);
     scene.tweens.add({ targets: this.arrow, y: 686, duration: 420, yoyo: true, repeat: -1 });
-    this.keyHandler = (e: KeyboardEvent) => {
-      if (e.code === 'Space' || e.code === 'Enter') this.advance();
+    this.skipBtn = new Button(scene, 1140, 534, '건너뛰기 ▶▶', () => this.skip(), { w: 150, h: 36, size: 16, fill: 0xfff3d6, silent: false });
+    this.logBtn = new Button(scene, 1000, 534, '기록', () => openLog(scene), { w: 80, h: 36, size: 16, fill: 0xfff3d6 });
+    this.c.add([this.skipBtn, this.logBtn]);
+    this.keyDown = (e: KeyboardEvent) => {
+      if (!this.c.visible) return;
+      if (e.code === 'Space' || e.code === 'Enter') {
+        if (!e.repeat) {
+          this.startHold();
+          this.advance();
+        }
+      } else if (e.code === 'Tab') {
+        e.preventDefault();
+        this.skip();
+      } else if (e.code === 'KeyL') {
+        openLog(scene);
+      }
     };
-    scene.input.keyboard?.on('keydown', this.keyHandler);
+    this.keyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space' || e.code === 'Enter') this.endHold();
+    };
+    window.addEventListener('keydown', this.keyDown);
+    window.addEventListener('keyup', this.keyUp);
+    // fast-forward while held
+    this.holdTimer = scene.time.addEvent({
+      delay: 70,
+      loop: true,
+      callback: () => {
+        if (this.holding && this.c.visible && scene.time.now - this.holdStart > 350 && scene.time.now - this.shownAt > 90) this.advance(true);
+      },
+    });
+    scene.events.once('shutdown', () => this.destroy());
     this.hide();
+  }
+
+  private startHold() {
+    this.holding = true;
+    this.holdStart = this.scene.time.now;
+  }
+
+  private endHold() {
+    this.holding = false;
+  }
+
+  private skip() {
+    if (!this.c.visible) return;
+    this.skipping = true;
+    this.finishTyping();
+    this.advance(true);
   }
 
   hide() {
     this.c.setVisible(false);
     this.catcher.disableInteractive();
+    releaseClock(this);
   }
 
   get visible() {
@@ -76,13 +146,13 @@ export class DialogueBox {
     const hasPortrait = kind === 'say' && !!who && this.scene.textures.exists(portraitKey(who));
     if (kind === 'narrate') {
       panel(g, 60, 556, 1160, 148, PALETTE.ink, 22);
-      this.body.setColor('#FFF3D6').setFontFamily(FONT_UI);
+      this.body.setColor('#FFF3D6').setFontFamily(FONT_UI).setFontSize(25);
       this.body.setPosition(110, 584).setWordWrapWidth(1060);
       this.arrow.setColor('#FFF3D6');
     } else if (kind === 'think') {
       panel(g, 60, 556, 1160, 148, 0xe9e0f7, 22);
       this.body.setColor('#4a3f73').setFontFamily(FONT_UI).setFontSize(25);
-      this.body.setPosition(110, 580).setWordWrapWidth(1060);
+      this.body.setPosition(110, 584).setWordWrapWidth(1060);
       this.arrow.setColor('#4a3f73');
     } else {
       panel(g, 60, 556, 1160, 148, 0xfffaf0, 22);
@@ -98,7 +168,6 @@ export class DialogueBox {
       this.portraitRing.lineStyle(4, PALETTE.ink, 1);
       this.portraitRing.strokeCircle(155, 590, 72);
     }
-    // name tag
     const ng = this.nameTag.list[0] as Phaser.GameObjects.Graphics;
     ng.clear();
     if (kind === 'say' && who) {
@@ -128,28 +197,37 @@ export class DialogueBox {
 
   /** Shows a line and resolves when the player dismisses it. */
   show(kind: LineKind, text: string, who?: string): Promise<void> {
+    logLine(kind, text, who);
+    holdClock(this);
     this.layout(kind, who);
     this.c.setVisible(true);
     this.catcher.setInteractive();
     this.full = text;
     this.body.setText('');
     this.arrow.setVisible(false);
-    let i = 0;
+    this.shownAt = this.scene.time.now;
     const chars = Array.from(text);
     this.typing?.remove();
-    this.typing = this.scene.time.addEvent({
-      delay: 24,
-      repeat: chars.length - 1,
-      callback: () => {
-        i++;
-        this.body.setText(chars.slice(0, i).join(''));
-        if (i % 3 === 0 && kind === 'say') sfx('tick');
-        if (i >= chars.length) this.finishTyping();
-      },
-    });
-    if (chars.length === 0 || TEST_MODE) this.finishTyping();
+    this.typing = null;
+    const delay = TEXT_SPEED_MS[getSettings().textSpeed];
+    if (chars.length === 0 || TEST_MODE || delay === 0 || this.skipping || (this.holding && this.scene.time.now - this.holdStart > 350)) {
+      this.finishTyping();
+    } else {
+      let i = 0;
+      this.typing = this.scene.time.addEvent({
+        delay,
+        repeat: chars.length - 1,
+        callback: () => {
+          i++;
+          this.body.setText(chars.slice(0, i).join(''));
+          if (i % 3 === 0 && kind === 'say') sfx('tick');
+          if (i >= chars.length) this.finishTyping();
+        },
+      });
+    }
     return new Promise((res) => {
       this.resolve = res;
+      if (this.skipping) this.scene.time.delayedCall(0, () => this.advance(true));
     });
   }
 
@@ -160,31 +238,87 @@ export class DialogueBox {
     this.arrow.setVisible(true);
   }
 
-  private advance() {
+  private advance(force = false) {
     if (!this.c.visible) return;
-    if (this.typing) {
+    if (this.typing && !force) {
       this.finishTyping();
       return;
     }
+    this.finishTyping();
     const r = this.resolve;
     this.resolve = null;
     if (r) {
-      sfx('click');
+      if (!force) sfx('click');
       r();
     }
   }
 
   destroy() {
-    this.scene.input.keyboard?.off('keydown', this.keyHandler);
+    window.removeEventListener('keydown', this.keyDown);
+    window.removeEventListener('keyup', this.keyUp);
+    this.holdTimer?.remove();
     this.typing?.remove();
-    this.c.destroy();
-    this.catcher.destroy();
+    releaseClock(this);
+    if (this.c.scene) this.c.destroy();
+    if (this.catcher.scene) this.catcher.destroy();
   }
+}
+
+/** [변경 1] The last 100 lines of dialogue. */
+export function openLog(scene: Phaser.Scene) {
+  if (scene.children.getByName('dialogueLog')) return;
+  const token = {};
+  holdClock(token);
+  const c = scene.add.container(0, 0).setDepth(1400).setName('dialogueLog');
+  const shade = scene.add.rectangle(0, 0, 1280, 720, PALETTE.ink, 0.6).setOrigin(0).setInteractive();
+  const g = scene.add.graphics();
+  panel(g, 160, 40, 960, 640, 0xfffaf0, 18);
+  c.add([shade, g]);
+  c.add(txt(scene, 640, 76, '대사 기록', { size: 28, fontFamily: '"Jua", sans-serif' }).setOrigin(0.5));
+  const lines = DIALOGUE_LOG.slice(-100);
+  const body = scene.add.container(0, 0);
+  let y = 0;
+  for (const l of lines) {
+    const head = l.who ? `${l.who}: ` : '';
+    const t = txt(scene, 200, y, head + l.text, { size: 19, color: l.who ? '#3B3355' : '#6b6385', wordWrap: { width: 880, useAdvancedWrap: true } });
+    body.add(t);
+    y += t.height + 10;
+  }
+  const viewTop = 110;
+  const viewH = 520;
+  body.y = viewTop + Math.min(0, viewH - y);
+  const maskG = scene.make.graphics({}, false);
+  maskG.fillRect(170, viewTop, 940, viewH);
+  body.setMask(maskG.createGeometryMask());
+  c.add(body);
+  c.add(txt(scene, 640, 656, '휠/↑↓로 스크롤 · 아무 데나 누르거나 L·Esc로 닫기', { size: 15, color: '#9a96a8' }).setOrigin(0.5));
+  const minY = viewTop + Math.min(0, viewH - y);
+  const scroll = (dy: number) => {
+    body.y = Phaser.Math.Clamp(body.y - dy, minY, viewTop);
+  };
+  const wheel = (_p: unknown, _o: unknown, _dx: number, dy: number) => scroll(dy * 0.6);
+  scene.input.on('wheel', wheel);
+  const close = () => {
+    scene.input.off('wheel', wheel);
+    window.removeEventListener('keydown', key);
+    releaseClock(token);
+    maskG.destroy();
+    c.destroy();
+  };
+  const key = (e: KeyboardEvent) => {
+    if (e.code === 'ArrowUp') scroll(-40);
+    else if (e.code === 'ArrowDown') scroll(40);
+    else if (e.code === 'KeyL' || e.code === 'Escape') close();
+  };
+  setTimeout(() => window.addEventListener('keydown', key), 0);
+  shade.on('pointerdown', close);
 }
 
 /** Vertical choice menu; resolves with the chosen index. Keys 1–4 work too. */
 export function choose(scene: Phaser.Scene, options: string[], y = 300): Promise<number> {
   return new Promise((resolve) => {
+    const token = {};
+    holdClock(token);
     const blocker = scene.add.zone(0, 0, 1280, 720).setOrigin(0).setDepth(DEPTH + 9).setInteractive();
     const shade = scene.add.rectangle(0, 0, 1280, 720, PALETTE.ink, 0.25).setOrigin(0).setDepth(DEPTH + 9);
     const buttons: Button[] = [];
@@ -195,6 +329,7 @@ export function choose(scene: Phaser.Scene, options: string[], y = 300): Promise
       buttons.forEach((b) => b.destroy());
       blocker.destroy();
       shade.destroy();
+      releaseClock(token);
       resolve(i);
     };
     const onKey = (e: KeyboardEvent) => {

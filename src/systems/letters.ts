@@ -43,6 +43,5 @@ export function letterLook(n: number): LetterLook {
     stamps: Math.floor((n - 1) / 12) + (n >= 60 ? 1 : 0),
     seed: n * 7919,
     shrimpDoodle: n === 1,
-    footer: '— 아빠',
   };
 }

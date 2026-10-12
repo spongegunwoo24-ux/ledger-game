@@ -15,13 +15,31 @@ describe('content', () => {
     }
   });
 
-  it('letters are 120–350 characters and numbered in order', () => {
+  it('[변경 1] letters are 120–400 characters and numbered in order', () => {
     LETTERS.forEach((l, i) => {
       expect(l.n).toBe(i + 1);
       const len = Array.from(l.body.replace(/\s+/g, ' ')).length;
       expect(len, `L${l.n} length ${len}`).toBeGreaterThanOrEqual(120);
-      expect(len, `L${l.n} length ${len}`).toBeLessThanOrEqual(350);
+      expect(len, `L${l.n} length ${len}`).toBeLessThanOrEqual(400);
     });
+  });
+
+  it('[변경 1] "미안" appears in at most 5 letters', () => {
+    expect(LETTERS.filter((l) => l.body.includes('미안')).length).toBeLessThanOrEqual(5);
+  });
+
+  it('[변경 1] L01 is the commissioner\'s text', () => {
+    expect(LETTERS[0].body.startsWith('일라이에게.\n여기서는 편지지를 한 달에 두 장 준다.')).toBe(true);
+    expect(LETTERS[0].body.endsWith('아직도 새우 싫어하니?\n— 아빠')).toBe(true);
+  });
+
+  it('[변경 1] sign-offs vary', () => {
+    const ends = new Set(LETTERS.map((l) => l.body.trim().split('\n').pop()));
+    expect(ends.size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('[변경 1] every event has a non-empty summary', () => {
+    for (const e of ALL_EVENTS) expect(e.summary?.trim().length, e.id).toBeGreaterThan(10);
   });
 
   it('L01 has the shrimp line (D18)', () => {

@@ -1,11 +1,17 @@
 # 콘텐츠 목록 (CONTENT_INDEX)
 
+## 프롤로그
+
+8장 그림책 — src/scenes/Prologue.ts (새 게임 직후, 건너뛰기 가능)
+
 ## 이벤트
+
+모든 이벤트에 `summary`(한국어 1~2줄)가 있음. 수첩 "지난 이야기"에 쓰임.
 
 | ID | 날짜 · 구간 | 파일 |
 | --- | --- | --- |
 | W1_FUNERAL | 1일 오전 | src/data/events/week1.ts |
-| W1_BANK | 1일 오전 | src/data/events/week1.ts |
+| W1_BANK | 1일 오전 (상환표 · 빨간 공식 안내문) | src/data/events/week1.ts |
 | W1_FIRST_TRIP | 1일 오후 → 그물질(거스의 자리, 튜토리얼) | src/data/events/week1.ts |
 | W1_HOME_FIRST | 1일 저녁 | src/data/events/week1.ts |
 | W1_FIRST_SALE | 2일 오전 | src/data/events/week1.ts |
@@ -16,7 +22,9 @@
 | W1_LOGBOOK_X | 4일 저녁 | src/data/events/week1.ts |
 | W1_BOTTLE | 5일 오전 | src/data/events/week1.ts |
 | W1_KNOT_LESSON | 6일 새벽 (매듭 미니게임) | src/data/events/week1.ts |
-| W1_PAYMENT | 금요일 오후 끝 (생성 장면) | src/scenes/Cutscene.ts (`payment`) |
+| W1_PAYMENT | 금요일 17:00 (생성 장면: 거스 커피 깡통 · 납부 · 연체 경고장 · 압류) | src/scenes/Cutscene.ts (`payment`) |
+| (월요일 마감) | 연체가 있는 월요일 17:00 (생성 장면) | src/scenes/Cutscene.ts (`deadline`) |
+| 압류 결말 | 월요일 미납 또는 두 번째 금요일 부족 | src/scenes/Ending.ts |
 | SUN_CHURCH | 일요일 오전 (선택) | src/data/events/common.ts |
 | LEE_FINE | 거북을 버린 다음 날 아침 | src/data/events/common.ts |
 
@@ -30,7 +38,21 @@
 
 | 번호 | 파일 |
 | --- | --- |
-| L01–L12 | src/data/letters/l01_12.ts |
+| L01–L12 (변경 요청 1 규칙으로 다시 씀. L01은 의뢰인 원문) | src/data/letters/l01_12.ts |
+
+## 물고기 · 미끼 · 새우
+
+| 내용 | 파일 |
+| --- | --- |
+| 물고기 36종 (흔함 8 / 보통 12 / 희귀 10 / 아주 희귀 2 / 전설 4), 장소·조건·크기·패턴·행동·층·미끼 | src/data/fish.ts |
+| 물고기 그림 (모양별 코드 그림), 황금 새우, 전설 어둠 효과 | src/art/fish.ts |
+| 미끼 4종 (새우 $2×10, 살아있는 핀피시 $4×4, 게 $3×5, 루어 $6 재사용) | src/data/bait.ts |
+| 새우 3종 (갈색/흰/분홍) | src/data/catch.ts |
+| 출현표 · 파이팅 · 바다 속 물고기 움직임 | src/systems/fishSpawn.ts, src/systems/fight.ts, src/scenes/sea/SeaLife.ts |
+
+## 만난 사람 (수첩 "지금 상황")
+
+src/data/people.ts — 거스, 캘빈, 토비, 매튜 신부, 프리야, 듀이, 장부, 메이지, 조앤, 행크, 로사, 리 단속관 등 (만난 조건 포함)
 
 ## 증거 (이름만, 내용은 M4)
 

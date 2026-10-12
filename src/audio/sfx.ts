@@ -262,6 +262,28 @@ export function sfx(id: SfxId | string) {
     case 'fire':
       for (let i = 0; i < 8; i++) noise(0.12, 0.08, 'bandpass', 2000 + Math.random() * 2000, 900, i * 0.1, 2);
       break;
+    case 'fanfare':
+      [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone('triangle', f, f, i === 6 ? 0.9 : 0.22, 0.14, i * 0.13));
+      [262, 392, 523].forEach((f) => tone('sine', f, f, 1.6, 0.08, 0.8));
+      break;
+    case 'heartbeat':
+      tone('sine', 70, 45, 0.16, 0.5);
+      tone('sine', 66, 42, 0.14, 0.4, 0.22);
+      break;
+    case 'horn':
+      tone('sawtooth', 147, 147, 1.4, 0.09);
+      tone('sawtooth', 220, 220, 1.4, 0.05);
+      break;
+    case 'reel':
+      for (let i = 0; i < 8; i++) tone('square', 1400 + i * 40, 1400 + i * 40, 0.025, 0.04, i * 0.04);
+      break;
+    case 'snap':
+      tone('square', 1200, 200, 0.12, 0.2);
+      noise(0.15, 0.2, 'highpass', 4000, 2000);
+      break;
+    case 'glint':
+      [1568, 2093, 2637].forEach((f, i) => tone('sine', f, f, 0.4, 0.07, i * 0.06));
+      break;
     case 'bark':
       tone('sawtooth', 420, 300, 0.09, 0.14);
       tone('sawtooth', 440, 320, 0.09, 0.14, 0.16);

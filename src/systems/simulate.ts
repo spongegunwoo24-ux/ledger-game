@@ -1,21 +1,34 @@
 import { TUNING } from '../config/tuning';
-import { isPaymentDay, isSunday, weekOf } from '../core/calendar';
+import { isMonday, isPaymentDay, isSunday } from '../core/calendar';
 import { hash32, makeRng, type Rng } from '../core/rng';
 import { newGame, type GameState } from '../core/state';
 import type { GroundId } from '../core/types';
 import { GROUNDS, isBest } from '../data/grounds';
-import { addTallyToHold, executeSale, fridayPayment, gusCanOffer, payDebt, quoteSale, spend } from './economy';
-import { conditionsFor, groundAvailable, rollHaul, snagChancePerSecond } from './fishing';
+import { fishDef } from '../data/fish';
+import { addTallyToHold, executeSale, fridayPayment, gusCanOffer, overdueDeadline, payDebt, quoteSale, spend } from './economy';
+import { conditionsFor, groundAvailable, rollHaul, snagChancePerMinute } from './fishing';
 import { applyOvernight } from './overnight';
 import { emptyTally, soldAs } from './sorting';
 
+/**
+ * [변경 1] Economy simulation over the new day structure: a morning at sea until 08:00 with
+ * several net hauls, some rod fishing, sorting accuracy, Ledger theft, combo bonus,
+ * and the Friday/Monday payment rules.
+ */
 export type Profile = 'poor' | 'average' | 'great';
 
 interface ProfileDef {
-  towSeconds: number;
+  /** minutes the net stays down per haul */
+  tow: number;
+  /** minutes lost at the dock before sailing */
+  dawdle: number;
   wrongBasket: number;
-  stolenPerTrip: number;
-  restDays: number[]; // weekday indexes (0 = Sat) on which they don't fish
+  stolenPerHaul: number;
+  /** combo + freshness bonus as a share of shrimp value */
+  comboBonus: number;
+  /** average dollars per morning from the rod */
+  rodDollars: number;
+  restDays: number[]; // weekday indexes (0 = Sat)
   smartGround: boolean;
   acceptsGusMoney: boolean;
   useMarket: boolean;
@@ -26,10 +39,13 @@ interface ProfileDef {
 
 export const PROFILES: Record<Profile, ProfileDef> = {
   poor: {
-    towSeconds: 38,
+    tow: 40,
+    dawdle: 50,
     wrongBasket: 0.3,
-    stolenPerTrip: 8,
-    restDays: [1, 4],
+    stolenPerHaul: 7,
+    comboBonus: 0,
+    rodDollars: 0,
+    restDays: [1],
     smartGround: false,
     acceptsGusMoney: true,
     useMarket: false,
@@ -38,30 +54,38 @@ export const PROFILES: Record<Profile, ProfileDef> = {
     prepayAbove: null,
   },
   average: {
-    towSeconds: 68,
+    tow: 62,
+    dawdle: 20,
     wrongBasket: 0.1,
-    stolenPerTrip: 4,
+    stolenPerHaul: 4,
+    comboBonus: 0.05,
+    rodDollars: 10,
     restDays: [1],
     smartGround: true,
     acceptsGusMoney: false,
     useMarket: false,
     rosaFromWeek: 99,
-    dailySpend: 8,
+    dailySpend: 10,
     prepayAbove: null,
   },
   great: {
-    towSeconds: 82,
-    wrongBasket: 0.02,
-    stolenPerTrip: 1,
-    restDays: [],
+    tow: 66,
+    dawdle: 10,
+    wrongBasket: 0.04,
+    stolenPerHaul: 2,
+    comboBonus: 0.08,
+    rodDollars: 14,
+    restDays: [1],
     smartGround: true,
     acceptsGusMoney: false,
     useMarket: true,
-    rosaFromWeek: 3,
-    dailySpend: 12,
+    rosaFromWeek: 4,
+    dailySpend: 14,
     prepayAbove: 150,
   },
 };
+
+const HARBOR = { x: 185, y: 627 };
 
 function chooseGround(s: GameState, p: ProfileDef, rng: Rng): GroundId {
   const c = conditionsFor(s.day, s.seed);
@@ -73,46 +97,65 @@ function chooseGround(s: GameState, p: ProfileDef, rng: Rng): GroundId {
   return 'oyster';
 }
 
-/** One simulated fishing trip + sort, using the real fishing and sorting systems. */
-function simulateTrip(s: GameState, p: ProfileDef, rng: Rng) {
+function sailMinutes(g: GroundId): number {
+  const d = GROUNDS.find((x) => x.id === g)!.pos;
+  return Math.round((Math.hypot(d.x - HARBOR.x, d.y - HARBOR.y) / 100) * TUNING.clock.sailPer100px);
+}
+
+/** One simulated morning at sea using the real haul and sorting rules. */
+function simulateMorning(s: GameState, p: ProfileDef, rng: Rng) {
   const ground = chooseGround(s, p, rng);
-  let snagged = false;
-  for (let t = 1; t <= p.towSeconds; t++) {
-    if (rng() < snagChancePerSecond(ground, t)) {
-      snagged = true;
-      break;
-    }
-  }
-  const loss = snagged ? 0.3 + rng() * 0.3 : 0;
-  const items = rollHaul({
-    ground,
-    seconds: p.towSeconds,
-    conditions: conditionsFor(s.day, s.seed),
-    netTornAtStart: s.netTorn,
-    snagged,
-    snagLoss: loss,
-    day: s.day,
-    towIndex: 0,
-    rng,
-    storyTaken: [],
-  });
-  if (snagged) s.netTorn = true;
-  else if (s.netTorn) s.netTorn = false; // repaired in the afternoon at the dock
-  const t = emptyTally();
-  let stolen = p.stolenPerTrip;
-  for (const it of items) {
-    if (it.kind === 'shrimp') {
-      if (stolen > 0 && rng() < 0.5) {
-        stolen--;
-        t.stolen++;
-        continue;
+  let minutes = TUNING.clock.seaEnd - TUNING.clock.wake - p.dawdle - sailMinutes(ground);
+  let haul = 0;
+  while (minutes >= 20) {
+    const tow = Math.min(p.tow, minutes);
+    minutes -= tow + 6;
+    let snagged = false;
+    for (let t = 1; t <= tow; t++) {
+      if (rng() < snagChancePerMinute(ground, t)) {
+        snagged = true;
+        break;
       }
-      const wrong = rng() < p.wrongBasket && it.size !== 'small';
-      const bin = wrong ? (it.size === 'large' ? 'medium' : 'small') : it.size!;
-      t.lbs[soldAs(it, bin)] += TUNING.trawl.lbsPerShrimpItem;
-    } else if (it.kind === 'crab') t.crabs++;
+    }
+    const items = rollHaul({
+      ground,
+      minutes: tow,
+      conditions: conditionsFor(s.day, s.seed),
+      netTornAtStart: false,
+      snagged,
+      snagLoss: snagged ? 0.3 + rng() * 0.3 : 0,
+      day: s.day,
+      towIndex: haul,
+      rng,
+      storyTaken: [],
+    });
+    const t = emptyTally();
+    let stolen = p.stolenPerHaul;
+    let shrimpValue = 0;
+    for (const it of items) {
+      if (it.kind === 'shrimp') {
+        if (it.golden) {
+          t.golden++;
+          continue;
+        }
+        if (stolen > 0 && rng() < 0.5) {
+          stolen--;
+          t.stolen++;
+          continue;
+        }
+        const wrong = rng() < p.wrongBasket && it.size !== 'small';
+        const bin = wrong ? (it.size === 'large' ? 'medium' : 'small') : it.size!;
+        const sz = soldAs(it, bin);
+        t.lbs[sz] += TUNING.trawl.lbsPerShrimpItem;
+        shrimpValue += TUNING.prices[sz] * TUNING.trawl.lbsPerShrimpItem;
+      } else if (it.kind === 'crab') t.crabs++;
+      else if (it.kind === 'fish' && it.id && it.id !== 'pinfish' && fishDef(it.id)) t.fish.push({ id: it.id, inches: it.inches ?? 0 });
+    }
+    t.bonus = Math.round(shrimpValue * p.comboBonus * 100) / 100;
+    addTallyToHold(s, t);
+    haul++;
   }
-  addTallyToHold(s, t);
+  s.hold.fishValue += p.rodDollars * (0.6 + rng() * 0.8);
   s.today.trips += 1;
   s.money -= TUNING.costs.fuel;
 }
@@ -121,7 +164,7 @@ export interface SimResult {
   state: GameState;
   repossessed: boolean;
   paidOffDay: number | null;
-  missedFridays: number;
+  shortFridays: number;
   log: string[];
 }
 
@@ -132,21 +175,28 @@ export function simulateSeason(profile: Profile, days = 63, seed = 12345): SimRe
   const rng = makeRng(hash32(seed, profile));
   const log: string[] = [];
   let repossessed = false;
-  let missed = 0;
-  // Rosa's trust grows through her quest for players who do it
+  let short = 0;
   for (let d = 1; d <= days; d++) {
     s.day = d;
     const wd = (d - 1) % 7;
-    if (weekOf(d) >= p.rosaFromWeek) s.feelings.rosa = Math.max(s.feelings.rosa, 60);
-    if (p.useMarket && weekOf(d) >= 6) s.feelings.fishermen = Math.max(s.feelings.fishermen, 40);
+    if (Math.ceil(d / 7) >= p.rosaFromWeek) s.feelings.rosa = Math.max(s.feelings.rosa, 60);
+    if (p.useMarket && Math.ceil(d / 7) >= 6) s.feelings.fishermen = Math.max(s.feelings.fishermen, 40);
     const fishes = d === 1 || !p.restDays.includes(wd) || (isSunday(d) && !p.restDays.includes(1));
-    if (fishes) simulateTrip(s, p, rng);
-    // sell (morning): Rosa first, then market or cannery
+    if (fishes) simulateMorning(s, p, rng);
     if (s.feelings.rosa >= 60) executeSale(s, quoteSale(s, 'rosa'));
-    const marketOk = p.useMarket && weekOf(d) >= 6;
+    const marketOk = p.useMarket && Math.ceil(d / 7) >= 6;
     executeSale(s, quoteSale(s, marketOk ? 'market' : 'cannery'));
     spend(s, Math.min(p.dailySpend, Math.max(0, s.money - 20)));
     if (p.prepayAbove !== null && s.money > p.prepayAbove) payDebt(s, s.money - p.prepayAbove);
+    if (isMonday(d) && s.overdue) {
+      const r = overdueDeadline(s);
+      log.push(`D${d} 연체 마감 ${r?.paid.toFixed(0)}/${r?.owed.toFixed(0)}`);
+      if (r?.repossess) {
+        repossessed = true;
+        log.push(`D${d} 압류`);
+        break;
+      }
+    }
     if (isPaymentDay(d)) {
       if (gusCanOffer(s)) {
         s.flags.gusCanOffered = true;
@@ -156,8 +206,8 @@ export function simulateSeason(profile: Profile, days = 63, seed = 12345): SimRe
         }
       }
       const r = fridayPayment(s);
-      if (r.short > 0) missed++;
-      log.push(`D${d} 납부 ${r.paid.toFixed(0)}/${r.due.toFixed(0)} · 잔액 $${s.money.toFixed(0)} · 빚 $${s.debt.toFixed(0)}${r.extensionGranted ? ' (연장)' : ''}${r.warning ? ` (경고${r.warning})` : ''}`);
+      if (r.short > 0) short++;
+      log.push(`D${d} 상환 ${r.paid.toFixed(0)}/${r.due.toFixed(0)} · 잔액 $${s.money.toFixed(0)} · 빚 $${s.debt.toFixed(0)}${r.short > 0 ? ` (부족 ${r.short.toFixed(0)})` : ''}`);
       if (r.repossess) {
         repossessed = true;
         log.push(`D${d} 압류`);
@@ -169,5 +219,5 @@ export function simulateSeason(profile: Profile, days = 63, seed = 12345): SimRe
   }
   const paidOffDay = typeof s.flags.debtPaidOffDay === 'number' ? (s.flags.debtPaidOffDay as number) : null;
   log.push(`결과: ${profile} · 압류 ${repossessed ? '예' : '아니오'} · 완납일 ${paidOffDay ?? '-'} · 총수입 $${s.totals.earned.toFixed(0)}`);
-  return { state: s, repossessed, paidOffDay, missedFridays: missed, log };
+  return { state: s, repossessed, paidOffDay, shortFridays: short, log };
 }

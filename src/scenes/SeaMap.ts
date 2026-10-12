@@ -7,7 +7,11 @@ import { G } from '../core/game';
 import { owns } from '../core/state';
 import type { GroundId } from '../core/types';
 import { initView } from '../core/view';
-import { GROUNDS, isBest, type GroundDef } from '../data/grounds';
+import { seaEndTime } from '../core/clock';
+import { hash32, makeRng, range } from '../core/rng';
+import { GROUNDS, groundDef, isBest, type GroundDef } from '../data/grounds';
+
+const HARBOR = { x: 185, y: 627 };
 import { GROUND_TIPS } from '../data/logbook';
 import { conditionsFor, groundAvailable } from '../systems/fishing';
 import { spend } from '../systems/economy';
@@ -24,8 +28,15 @@ export class SeaMapScene extends Phaser.Scene {
   private bubble!: Bubble;
   private selected: GroundId | null = null;
 
+  private from: GroundId | null = null;
+  private dive: GroundId | null = null;
+
   constructor() {
     super('SeaMap');
+  }
+
+  init(d: { from?: GroundId }) {
+    this.from = d?.from ?? null;
   }
 
   create() {
@@ -53,7 +64,65 @@ export class SeaMapScene extends Phaser.Scene {
     if (s.day === 6) {
       this.time.delayedCall(500, () => this.bubble.say(700, 280, '거스: 오늘은 내 자리. 따라와.', 3500));
     }
-    new Button(this, 120, 670, '← 항구', () => this.scene.start('Harbor'), { w: 150, h: 48, size: 20, fill: 0xfff3d6 });
+    if (this.from) {
+      const back = this.from;
+      new Button(this, 130, 670, '← 그대로 있기', () => this.scene.start('Trawl', { ground: back }), { w: 170, h: 48, size: 18, fill: 0xfff3d6 });
+    } else {
+      new Button(this, 120, 670, '← 항구', () => this.scene.start('Harbor'), { w: 150, h: 48, size: 20, fill: 0xfff3d6 });
+    }
+    txt(this, 640, 136, this.from ? '어장을 옮기면 가는 동안 시간이 흐른다' : '멀리 갈수록 바다에서 보낼 시간이 줄어든다', { size: 16, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 4 }).setOrigin(0.5);
+    if (s.flags.ledgerAboard && !this.from) this.time.delayedCall(700, () => this.ledgerGuide());
+  }
+
+  /** [변경 1] Ledger flies over a ground with a school or a rare fish and dives (addictive device 1). */
+  private ledgerGuide() {
+    const s = G.state;
+    const options = GROUNDS.filter((g) => g.id !== 'theSpot' && groundAvailable(s, g.id));
+    if (!options.length) return;
+    const rng = makeRng(hash32(s.seed, 'ledgerGuide', s.day));
+    const hot = options[Math.floor(rng() * options.length)];
+    const accuracy = Math.min(0.95, 0.55 + 0.05 * Math.min(8, s.ledgerFed));
+    const target = rng() < accuracy ? hot : options[Math.floor(rng() * options.length)];
+    this.dive = target.id;
+    s.flags[`hotGround_${s.day}`] = hot.id;
+    const bird = addSprite(this, HARBOR.x, HARBOR.y - 40, 'ch_ledger_fly', 0.9).setDepth(30);
+    sfx('squawk');
+    const tw = { t: 0 };
+    const start = { x: HARBOR.x, y: HARBOR.y - 40 };
+    const end = { x: target.pos.x, y: target.pos.y - 60 };
+    const ctrl = { x: (start.x + end.x) / 2, y: Math.min(start.y, end.y) - 220 };
+    this.tweens.add({
+      targets: tw,
+      t: 1,
+      duration: 2200,
+      ease: 'Sine.InOut',
+      onUpdate: () => {
+        const t = tw.t;
+        bird.x = (1 - t) * (1 - t) * start.x + 2 * (1 - t) * t * ctrl.x + t * t * end.x;
+        bird.y = (1 - t) * (1 - t) * start.y + 2 * (1 - t) * t * ctrl.y + t * t * end.y;
+        bird.setFlipX(end.x < start.x);
+      },
+      onComplete: () => {
+        this.tweens.add({
+          targets: bird,
+          y: target.pos.y,
+          scale: bird.scale * 0.7,
+          duration: 300,
+          ease: 'Quad.In',
+          onComplete: () => {
+            sfx('splash');
+            for (let i = 0; i < 10; i++) {
+              const p = this.add.image(target.pos.x, target.pos.y, 'fx_splash').setDepth(31).setScale(0.4);
+              this.tweens.add({ targets: p, x: p.x + range(rng, -40, 40), y: p.y - range(rng, 10, 50), alpha: 0, duration: 600, onComplete: () => p.destroy() });
+            }
+            bird.setTexture('ch_ledger').setScale(0.6 / 2);
+            this.tweens.add({ targets: bird, y: target.pos.y - 34, duration: 400, ease: 'Back.Out' });
+            this.tweens.add({ targets: bird, angle: { from: -6, to: 6 }, duration: 700, yoyo: true, repeat: -1, delay: 400 });
+            this.bubble.say(target.pos.x, target.pos.y - 70, '장부가 저기서 뭔가를 낚아챘다.', 2600);
+          },
+        });
+      },
+    });
   }
 
   private drawMap() {
@@ -193,8 +262,10 @@ export class SeaMapScene extends Phaser.Scene {
       c.add(txt(this, x + 24, 310, '거스가 데려갈 때만 갈 수 있다. "남한테 말하지 마."', { size: 18, color: '#9a96a8', wordWrap: { width: 330 } }));
     }
     const fuel = TUNING.costs.fuel;
+    const mins = this.sailMinutes(gd.id);
+    c.add(txt(this, x + 190, 434, `가는 데 ${mins}분${this.dive === gd.id ? ' · 장부가 다이빙한 곳' : ''}`, { size: 16, color: this.dive === gd.id ? '#b04a52' : '#6b6385' }).setOrigin(0.5));
     c.add(
-      new Button(this, x + 190, 470, avail ? `여기로 간다 (기름 $${fuel})` : '아직 못 간다', () => this.depart(gd.id), {
+      new Button(this, x + 190, 470, avail ? (this.from ? '여기로 옮긴다' : `여기로 간다 (기름 $${fuel})`) : '아직 못 간다', () => this.depart(gd.id), {
         w: 300,
         h: 54,
         fill: PALETTE.coral,
@@ -223,15 +294,29 @@ export class SeaMapScene extends Phaser.Scene {
     this.bubble.say(1040, 180, alone ? `일라이: ${line}` : `거스: ${line}`, 2800);
   }
 
+  /** minutes of sailing from the harbor (or the current ground) */
+  private sailMinutes(id: GroundId): number {
+    const to = groundDef(id).pos;
+    const fromPos = this.from ? groundDef(this.from).pos : HARBOR;
+    return Math.round((Phaser.Math.Distance.Between(fromPos.x, fromPos.y, to.x, to.y) / 100) * TUNING.clock.sailPer100px);
+  }
+
   private depart(id: GroundId) {
     const s = G.state;
     if (this.selected !== id) return;
-    const fuel = TUNING.costs.fuel;
-    if (!spend(s, fuel)) {
-      s.flags.fuelCredit = (Number(s.flags.fuelCredit) || 0) + fuel;
+    if (!this.from) {
+      const fuel = TUNING.costs.fuel;
+      if (!spend(s, fuel)) s.flags.fuelCredit = (Number(s.flags.fuelCredit) || 0) + fuel;
     }
+    const minutes = this.sailMinutes(id);
+    const sailed = !this.from;
+    s.time = Math.min(seaEndTime(s.day), s.time + minutes);
+    if (sailed || !G.trip) G.trip = { ground: id, sailedAt: s.time, hauls: G.trip?.hauls ?? 0, legendSpawned: false, hot: false, tutorial: false };
+    G.trip.ground = id;
+    const hotId = s.flags[`hotGround_${s.day}`];
+    G.trip.hot = this.dive === id && hotId === id;
     sfx('whoosh');
     this.cameras.main.fadeOut(400, 21, 18, 31);
-    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Trawl', { ground: id, towIndex: 0 }));
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Trawl', { ground: id }));
   }
 }

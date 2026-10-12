@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { PALETTE, FONT_TITLE, FONT_HAND } from '../art/palette';
 import { music, sfx } from '../audio/sfx';
 import { dayLabel, isFriday, weekOf } from '../core/calendar';
-import { autosave, G } from '../core/game';
+import { autosave, G, saveFriday } from '../core/game';
 import { initView } from '../core/view';
 import { applyOvernight } from '../systems/overnight';
 import { Button, panel } from '../ui/Button';
@@ -69,6 +69,7 @@ export class SummaryScene extends Phaser.Scene {
     sfx('chime');
     applyOvernight(s);
     autosave();
+    if (isFriday(s.day)) saveFriday();
     this.cameras.main.fadeOut(700, 21, 18, 31);
     this.cameras.main.once('camerafadeoutcomplete', () => enterSegment(this));
   }

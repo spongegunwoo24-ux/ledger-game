@@ -12,12 +12,24 @@ export interface NotebookEntry {
   where: string;
   pinned: boolean;
   questId?: string;
+  questTitle?: string;
+  progress?: string;
+  timeHint?: string;
   loc?: LocId;
   seg?: Segment;
   availableNow: boolean;
 }
 
 const SEG_ORDER: Segment[] = ['dawn', 'morning', 'afternoon', 'evening', 'night'];
+
+/** [변경 1] clock hours for each part of the day */
+export const SEG_HOURS: Record<Segment, string> = {
+  dawn: '04~08시',
+  morning: '08~09시',
+  afternoon: '09~19시',
+  evening: '19시 이후',
+  night: '밤',
+};
 
 function whenLabel(s: GameState, seg: Segment, today: boolean): string {
   const segIdx = SEG_ORDER.indexOf(seg);
@@ -81,6 +93,9 @@ export function notebookEntries(s: GameState): NotebookEntry[] {
       where: LOC_NAMES[st.loc],
       pinned: false,
       questId: id,
+      questTitle: def.title,
+      progress: `${q.step + 1}/${def.steps.length}단계${rep}`,
+      timeHint: SEG_HOURS[st.seg],
       loc: st.loc,
       seg: st.seg,
       availableNow: today && st.seg === s.segment,
@@ -95,4 +110,26 @@ export function notebookEntries(s: GameState): NotebookEntry[] {
     }
   }
   return out;
+}
+
+/** [변경 1] Quest tracker: the tracked quest first, then up to two more. */
+export function trackerEntries(s: GameState): NotebookEntry[] {
+  const qs = notebookEntries(s).filter((e) => e.questId);
+  const tracked = qs.find((e) => e.questId === s.trackedQuest) ?? qs[0];
+  if (!tracked) return [];
+  return [tracked, ...qs.filter((e) => e !== tracked).slice(0, 2)];
+}
+
+/** [변경 1] "이번 주 상환 $500 · 모은 돈 $320 · 금요일까지 2일" */
+export function paymentStatusLine(s: GameState): string {
+  if (s.debt <= 0) return '빚 없음 · 메리 루는 내 배';
+  if (s.overdue) {
+    const d = s.overdue.deadlineDay - s.day;
+    return `연체 $${s.overdue.amount.toFixed(0)} · ${d <= 0 ? '오늘' : d === 1 ? '내일' : '월요일'} 17시까지 · 모은 돈 $${s.money.toFixed(0)}`;
+  }
+  if (weekOf(s.day) > 9) return `남은 빚 $${s.debt.toFixed(0)} · 정기 상환 끝`;
+  const due = dueNow(s);
+  if (due <= 0) return `이번 주 상환 완료 · 모은 돈 $${s.money.toFixed(0)}`;
+  const d = daysToFriday(s.day);
+  return `이번 주 상환 $${due.toFixed(0)} · 모은 돈 $${s.money.toFixed(0)} · ${d === 0 ? '오늘 17시까지' : `금요일까지 ${d}일`}`;
 }

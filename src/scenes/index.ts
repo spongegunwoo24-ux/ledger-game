@@ -8,6 +8,7 @@ import { HomeScene } from './Home';
 import { LocationScene } from './Location';
 import { MarketScene } from './Market';
 import { PauseScene } from './Pause';
+import { PrologueScene } from './Prologue';
 import { SeaMapScene } from './SeaMap';
 import { SummaryScene } from './Summary';
 import { TitleScene } from './Title';
@@ -17,6 +18,7 @@ import { TrawlScene } from './Trawl';
 export const SCENES = [
   BootScene,
   TitleScene,
+  PrologueScene,
   CutsceneScene,
   HarborScene,
   SeaMapScene,

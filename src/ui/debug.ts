@@ -1,7 +1,10 @@
 import type Phaser from 'phaser';
 import { G } from '../core/game';
 import { SEGMENTS, type FeelId, type Segment } from '../core/types';
+import { fmtTime, segmentStartTime } from '../core/clock';
+import { isPaymentDay } from '../core/calendar';
 import { ALL_EVENTS } from '../data/events';
+import { FISH } from '../data/fish';
 import { EVIDENCE_NAMES } from '../data/evidenceNames';
 import { enterSegment } from '../scenes/director';
 import { simulateSeason, type Profile } from '../systems/simulate';
@@ -77,9 +80,11 @@ export function toggleDebug(game: Phaser.Game) {
   const s = () => G.state;
   const info = el('div', { style: 'margin-bottom:6px;color:#c9b6e4' });
   const refreshInfo = () => {
-    info.textContent = `Day ${s().day} ${s().segment} · $${s().money.toFixed(2)} · 빚 $${s().debt}`;
+    const od = s().overdue;
+    info.textContent = `Day ${s().day} ${s().segment} ${fmtTime(s().time)} · $${s().money.toFixed(2)} · 빚 $${s().debt}${od ? ` · 연체 $${od.amount} (Day ${od.deadlineDay})` : ''} · 미납 ${s().shortfalls}회`;
   };
   refreshInfo();
+  const timer = window.setInterval(() => (panelEl ? refreshInfo() : window.clearInterval(timer)), 1000);
   p.appendChild(info);
 
   const day = input(String(s().day), 50);
@@ -96,8 +101,59 @@ export function toggleDebug(game: Phaser.Game) {
         s().segment = seg.value as Segment;
         s().slotsUsed = 0;
         s().lettersToday = 0;
+        s().time = segmentStartTime(s().segment, s().day);
         refreshInfo();
         restartFlow(game);
+      }),
+    ),
+  );
+  // [변경 1] clock, payment-failure and legendary tests
+  const clk = input(fmtTime(s().time), 50);
+  p.appendChild(
+    row(
+      '시계',
+      clk,
+      btn('설정', () => {
+        const [h, m] = clk.value.split(':').map((x) => Number(x) || 0);
+        s().time = h * 60 + m;
+        refreshInfo();
+      }),
+    ),
+  );
+  const jumpAfternoon = (day: number) => {
+    s().day = day;
+    s().segment = 'afternoon';
+    s().time = 16 * 60 + 55;
+    s().money = 0;
+    s().slotsUsed = 1;
+    refreshInfo();
+    restartFlow(game);
+  };
+  p.appendChild(
+    row(
+      '상환',
+      btn('다음 금요일 16:55 · 돈 0', () => {
+        let d = s().day;
+        while (!isPaymentDay(d) || s().flags[`paid_${d}`]) d++;
+        jumpAfternoon(d);
+      }),
+      btn('연체 마감 월요일 16:55 · 돈 0', () => {
+        const od = s().overdue;
+        if (od) jumpAfternoon(od.deadlineDay);
+      }),
+    ),
+  );
+  const fishSel = el('select', { style: 'width:150px' });
+  for (const f of [...FISH].sort((a, b) => (a.rarity === 'legendary' ? -1 : 0) - (b.rarity === 'legendary' ? -1 : 0)))
+    fishSel.appendChild(el('option', { value: f.id }, `${f.name} (${f.rarity})`));
+  p.appendChild(
+    row(
+      '물고기',
+      fishSel,
+      btn('바다에 소환', () => {
+        const sea = (window as unknown as { __sea?: { forceFish(id: string): unknown; scene: Phaser.Scenes.ScenePlugin } }).__sea;
+        if (sea && sea.scene.isActive()) sea.forceFish(fishSel.value);
+        else window.alert('바다(그물질 화면)에서만 쓸 수 있다.');
       }),
     ),
   );
