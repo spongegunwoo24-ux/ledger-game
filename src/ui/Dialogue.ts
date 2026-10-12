@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { PALETTE, FONT_UI } from '../art/palette';
 import { TEST_MODE } from '../core/view';
 import { holdClock, releaseClock } from '../core/clock';
+import { digitOf } from '../core/keys';
 import { getSettings, TEXT_SPEED_MS } from './settings';
 import { portraitKey } from '../art/characters';
 import { CHAR_NAMES, CHAR_NAMES_EN } from '../data/names';
@@ -197,6 +198,8 @@ export class DialogueBox {
 
   /** Shows a line and resolves when the player dismisses it. */
   show(kind: LineKind, text: string, who?: string): Promise<void> {
+    // the scene was left mid-scene (debug jump): the old script just stops here
+    if (!this.c.scene || this.scene.sys.settings.status >= Phaser.Scenes.SHUTDOWN) return new Promise<void>(() => undefined);
     logLine(kind, text, who);
     holdClock(this);
     this.layout(kind, who);
@@ -324,8 +327,11 @@ export function choose(scene: Phaser.Scene, options: string[], y = 300): Promise
     const buttons: Button[] = [];
     const total = options.length * 70;
     const startY = y - total / 2 + 35;
+    let open = true;
     const done = (i: number) => {
-      scene.input.keyboard?.off('keydown', onKey);
+      if (!open) return;
+      open = false;
+      window.removeEventListener('keydown', onKey);
       buttons.forEach((b) => b.destroy());
       blocker.destroy();
       shade.destroy();
@@ -333,7 +339,7 @@ export function choose(scene: Phaser.Scene, options: string[], y = 300): Promise
       resolve(i);
     };
     const onKey = (e: KeyboardEvent) => {
-      const n = Number(e.key);
+      const n = digitOf(e);
       if (n >= 1 && n <= options.length) done(n - 1);
     };
     options.forEach((o, i) => {
@@ -343,7 +349,8 @@ export function choose(scene: Phaser.Scene, options: string[], y = 300): Promise
       scene.tweens.add({ targets: b, alpha: 1, y: b.y, duration: 160, delay: i * 50 });
       buttons.push(b);
     });
-    scene.input.keyboard?.on('keydown', onKey);
+    window.addEventListener('keydown', onKey);
+    scene.events.once('shutdown', () => window.removeEventListener('keydown', onKey));
   });
 }
 

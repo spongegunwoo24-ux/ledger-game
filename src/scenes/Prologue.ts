@@ -5,6 +5,7 @@ import { charTexKey } from '../art/characters';
 import { TEX_SCALE } from '../art/pen';
 import { ambientWaves, music, sfx } from '../audio/sfx';
 import { initView } from '../core/view';
+import { onKey } from '../core/keys';
 import { Button, panel } from '../ui/Button';
 import { txt } from '../ui/text';
 import { enterSegment } from './director';
@@ -56,12 +57,8 @@ export class PrologueScene extends Phaser.Scene {
     txt(this, 640, 700, '클릭·스페이스: 다음', { size: 14, color: '#9a96a8' }).setOrigin(0.5).setDepth(5);
     const zone = this.add.zone(0, 0, 1280, 640).setOrigin(0).setInteractive().setDepth(4);
     zone.on('pointerdown', () => this.next());
-    this.input.keyboard?.on('keydown-SPACE', () => this.next());
-    this.input.keyboard?.on('keydown-ENTER', () => this.next());
-    this.input.keyboard?.on('keydown-TAB', (e: KeyboardEvent) => {
-      e.preventDefault();
-      this.finish();
-    });
+    onKey(this, ['Space', 'Enter', 'NumpadEnter'], () => this.next());
+    onKey(this, 'Tab', () => this.finish());
     this.show(0);
   }
 

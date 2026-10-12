@@ -13,9 +13,11 @@ function clickToClose(scene: Phaser.Scene, objs: Phaser.GameObjects.GameObject[]
     const zone = scene.add.zone(0, 0, 1280, 720).setOrigin(0).setDepth(DEPTH + 50).setInteractive();
     let armed = false;
     scene.time.delayedCall(delay, () => (armed = true));
+    let closed = false;
     const close = () => {
-      if (!armed) return;
-      scene.input.keyboard?.off('keydown', onKey);
+      if (!armed || closed) return;
+      closed = true;
+      window.removeEventListener('keydown', onKey);
       zone.destroy();
       objs.forEach((o) => o.destroy());
       res();
@@ -24,7 +26,7 @@ function clickToClose(scene: Phaser.Scene, objs: Phaser.GameObjects.GameObject[]
       if (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape') close();
     };
     zone.on('pointerdown', close);
-    scene.input.keyboard?.on('keydown', onKey);
+    window.addEventListener('keydown', onKey);
   });
 }
 

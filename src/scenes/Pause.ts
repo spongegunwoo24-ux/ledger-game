@@ -4,6 +4,7 @@ import { audioSettings, music, setAudio } from '../audio/sfx';
 import { G } from '../core/game';
 import { exportSave, importSave } from '../core/save';
 import { initView } from '../core/view';
+import { onKey } from '../core/keys';
 import { Button, panel } from '../ui/Button';
 import { Toasts } from '../ui/Dialogue';
 import { getSettings, setSettings, TEXT_SPEED_LABEL, TEXT_SPEEDS } from '../ui/settings';
@@ -69,6 +70,6 @@ export class PauseScene extends Phaser.Scene {
       this.scene.stop();
       this.scene.start('Title');
     }, { w: 300, h: 54, size: 20, fill: PALETTE.coral, sub: '마지막 자동 저장부터 이어짐' });
-    this.input.keyboard?.on('keydown-ESC', close);
+    onKey(this, 'Escape', close);
   }
 }

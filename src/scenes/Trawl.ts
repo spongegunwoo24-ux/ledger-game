@@ -11,6 +11,8 @@ import { hash32, makeRng, pick, range, type Rng } from '../core/rng';
 import { owns } from '../core/state';
 import type { GroundId, Weather } from '../core/types';
 import { initView } from '../core/view';
+import { digitOf, isHeld, KEY, onKey } from '../core/keys';
+import { holdClock, releaseClock } from '../core/clock';
 import { BAITS, baitDef, type BaitId } from '../data/bait';
 import { GUS_TOW } from '../data/dialogue/gusDeck';
 import { fishPrice, type FishDef } from '../data/fish';
@@ -21,7 +23,7 @@ import { FightModel, type Dir } from '../systems/fight';
 import { conditionsFor, haulGrade, rollHaul, snagChancePerMinute, towCurve, type NetFish } from '../systems/fishing';
 import type { SpawnContext } from '../systems/fishSpawn';
 import { Bubble } from '../ui/Bubble';
-import { Button } from '../ui/Button';
+import { Button, panel } from '../ui/Button';
 import { DialogueBox, Toasts } from '../ui/Dialogue';
 import { showFishCard } from '../ui/fishCard';
 import { Hud } from '../ui/Hud';
@@ -86,7 +88,9 @@ export class TrawlScene extends Phaser.Scene {
   private fightFish: Swimmer | null = null;
   private fightUI: Phaser.GameObjects.Container | null = null;
   private reeling = false;
-  private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+  /** mouse held in the water while fishing (bait follows it) */
+  private ptr: { x: number; y: number } | null = null;
+  private fishHint!: Phaser.GameObjects.Container;
   // effects
   private dark: Phaser.GameObjects.Image | null = null;
   private legendFish: Swimmer | null = null;
@@ -167,10 +171,22 @@ export class TrawlScene extends Phaser.Scene {
     this.homeBtn = new Button(this, 940, 672, '귀항', () => this.goHomeEarly(), { w: 150, h: 56, size: 20, fill: 0xfff3d6, sub: '시장으로' }).setDepth(650);
     this.buildBaitPanel();
 
-    this.keys = this.input.keyboard!.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SPACE,F,ONE,TWO,THREE,FOUR') as Record<string, Phaser.Input.Keyboard.Key>;
-    this.input.keyboard?.on('keydown-SPACE', () => this.onSpace());
-    this.input.keyboard?.on('keydown-F', () => this.toggleFishing());
-    (['ONE', 'TWO', 'THREE', 'FOUR'] as const).forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.selectBait(BAITS[i].id)));
+    // keys by physical position, so they also work with the Korean IME on (한/영)
+    onKey(this, 'Space', () => this.onSpace());
+    onKey(this, 'KeyF', () => this.toggleFishing());
+    onKey(this, ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4'], (e) => this.selectBait(BAITS[digitOf(e) - 1].id));
+    // mouse: hold in the water to lead the bait, click when "!" shows, click to reel in a fight
+    this.ptr = null;
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
+      if (over.length || !this.fishing || !this.bait || p.worldY < WATER_Y || p.worldY > 625) return;
+      this.ptr = { x: p.worldX, y: p.worldY };
+      this.onSpace(true);
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (this.ptr && p.isDown) this.ptr = { x: p.worldX, y: p.worldY };
+    });
+    this.input.on('pointerup', () => (this.ptr = null));
+    this.buildFishHint();
     this.events.once('shutdown', () => {
       this.winch.stop();
       this.heartbeat?.remove();
@@ -352,6 +368,7 @@ export class TrawlScene extends Phaser.Scene {
     const busy = this.ending || this.busy;
     this.netBtn.setText(this.net === 'down' ? '그물 올리기' : this.net === 'stuck' ? '그물 풀러 가기' : '그물 내리기');
     this.netBtn.setDisabled(busy || this.net === 'dropping' || this.net === 'hauling');
+    this.netBtn.setSub(this.fishing ? '클릭 (낚시 중)' : 'Space');
     this.rodBtn.setText(this.fishing ? '낚싯대 거두기' : '낚싯대');
     this.rodBtn.setDisabled(busy || this.net === 'stuck');
     this.moveBtn.setDisabled(busy || this.net !== 'up' || this.trip.tutorial);
@@ -526,15 +543,88 @@ export class TrawlScene extends Phaser.Scene {
       sfx('plop');
       if (!G.state.flags.rodTip) {
         G.state.flags.rodTip = true;
-        this.gusSay('방향키로 미끼를 움직여. 고기가 물면 "!" 뜬다. 그때 스페이스.', 4600);
+        this.gusSay('미끼를 움직여 봐. 고기가 물면 "!" 뜬다. 그때 당겨.', 4600);
+        void this.howToFish();
       }
     } else {
       this.bait = null;
       this.rodG.clear();
       this.bang.setVisible(false);
     }
+    this.ptr = null;
+    this.fishHint.setVisible(this.fishing);
     this.buildBaitPanel();
     this.refreshButtons();
+  }
+
+  /** Always-on help line while the rod is out. */
+  private buildFishHint() {
+    const c = this.add.container(640, 618).setDepth(655).setVisible(false);
+    const g = this.add.graphics();
+    g.fillStyle(0x241e3a, 0.82).fillRoundedRect(-470, -17, 940, 34, 17);
+    c.add(g);
+    c.add(
+      txt(this, 0, 0, '미끼 이동: 방향키·WASD 또는 물속을 마우스로 꾹  ·  "!" 뜨면 스페이스 또는 클릭  ·  F: 낚싯대 거두기', {
+        size: 16,
+        color: '#FFFAF0',
+      }).setOrigin(0.5),
+    );
+    this.fishHint = c;
+  }
+
+  /** First time the rod comes out: a short card on how fishing works. */
+  private howToFish(): Promise<void> {
+    return new Promise((res) => {
+      const token = {};
+      holdClock(token);
+      const c = this.add.container(0, 0).setDepth(1300);
+      const shade = this.add.rectangle(0, 0, 1280, 720, PALETTE.ink, 0.5).setOrigin(0).setInteractive();
+      const g = this.add.graphics();
+      panel(g, 300, 110, 680, 470, 0xfbf6e8, 18);
+      c.add([shade, g]);
+      c.add(txt(this, 640, 150, '낚시하는 법', { size: 32, fontFamily: FONT_TITLE }).setOrigin(0.5));
+      const lines = [
+        ['1', '미끼를 움직인다', '방향키나 WASD. 마우스라면 물속을 꾹 누르고 있으면 그쪽으로 간다. 가만히 두면 천천히 가라앉는다.'],
+        ['2', '물고기를 기다린다', '가까이 오면 실루엣이 선명해진다. 겁 많은 고기는 미끼가 가만히 있어야, 사냥꾼은 빨리 움직여야 문다.'],
+        ['3', '"!"가 뜨면 바로 당긴다', '스페이스 또는 물속 클릭. 0.3초 안이면 완벽. 늦으면 미끼만 뜯긴다.'],
+        ['4', '큰 고기는 싸운다', '화면에 나오는 화살표 방향 키를 누른 채 스페이스 연타. 점프하면 잠깐 멈춘다.'],
+      ];
+      lines.forEach(([n, head, body], i) => {
+        const y = 200 + i * 86;
+        const cg = this.add.graphics();
+        cg.fillStyle(PALETTE.coral, 1).fillCircle(350, y + 14, 16);
+        c.add(cg);
+        c.add(txt(this, 350, y + 14, n, { size: 18, fontFamily: FONT_TITLE, color: '#FFFAF0' }).setOrigin(0.5));
+        c.add(txt(this, 380, y, head, { size: 21, fontFamily: FONT_TITLE }));
+        c.add(txt(this, 380, y + 30, body, { size: 16, color: '#4a4560', wordWrap: { width: 570, useAdvancedWrap: true } }));
+      });
+      c.add(txt(this, 640, 555, '그물은 바닥에서 따로 혼자 찬다. 낚시 중에 그물은 아래 버튼으로 올린다.  ·  누르면 닫힘', { size: 14, color: '#9a96a8' }).setOrigin(0.5));
+      this.busy = true;
+      this.refreshButtons();
+      let open = true;
+      const close = () => {
+        if (!open) return;
+        open = false;
+        window.removeEventListener('keydown', key);
+        releaseClock(token);
+        c.destroy();
+        this.busy = false;
+        if (this.scene.isActive()) this.refreshButtons();
+        res();
+      };
+      const key = (e: KeyboardEvent) => {
+        if (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape') {
+          e.preventDefault();
+          close();
+        }
+      };
+      window.setTimeout(() => {
+        if (!open) return;
+        shade.on('pointerdown', close);
+        window.addEventListener('keydown', key);
+      }, 350);
+      this.events.once('shutdown', close);
+    });
   }
 
   private haveBait(): boolean {
@@ -542,15 +632,23 @@ export class TrawlScene extends Phaser.Scene {
   }
 
   private heldDir(): Dir {
-    const k = this.keys;
-    if (k.LEFT.isDown || k.A.isDown) return 'left';
-    if (k.RIGHT.isDown || k.D.isDown) return 'right';
-    if (k.UP.isDown || k.W.isDown) return 'up';
-    if (k.DOWN.isDown || k.S.isDown) return 'down';
+    if (isHeld(...KEY.left)) return 'left';
+    if (isHeld(...KEY.right)) return 'right';
+    if (isHeld(...KEY.up)) return 'up';
+    if (isHeld(...KEY.down)) return 'down';
+    // mouse held: the side of the bait it is on
+    if (this.ptr && this.bait) {
+      const dx = this.ptr.x - this.bait.x;
+      const dy = this.ptr.y - this.bait.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return 'none';
+      if (Math.abs(dx) >= Math.abs(dy)) return dx < 0 ? 'left' : 'right';
+      return dy < 0 ? 'up' : 'down';
+    }
     return 'none';
   }
 
-  private onSpace() {
+  /** Space (or a click in the water while fishing): net, hook, or reel. */
+  private onSpace(fromMouse = false) {
     if (this.ending || this.busy || this.dlg.visible) return;
     if (this.fight) {
       this.fight.tap(this.heldDir());
@@ -558,14 +656,14 @@ export class TrawlScene extends Phaser.Scene {
       return;
     }
     if (!this.fishing) {
-      this.toggleNet();
+      if (!fromMouse) this.toggleNet();
       return;
     }
     const b = this.life.biter();
     if (b && this.bait) {
       const dt = (this.time.now - b.biteAt) / 1000;
       this.hook(b, dt <= TUNING.fishing.perfectWindow ? 'perfect' : 'good');
-    } else if (this.bait) {
+    } else if (this.bait && !fromMouse) {
       // a jerk of the rod: the bait jumps up (and scares the shy)
       this.bait.y = Math.max(WATER_Y + 20, this.bait.y - 26);
       this.bait.speed = 160;
@@ -648,7 +746,7 @@ export class TrawlScene extends Phaser.Scene {
     const c = this.add.container(0, 0).setDepth(700);
     const hint = txt(this, 640, 150, '', { size: 30, fontFamily: FONT_TITLE, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 6 }).setOrigin(0.5);
     hint.setName('hint');
-    const sub = txt(this, 640, 188, '반대 방향 키를 누른 채 스페이스 연타!', { size: 17, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 4 }).setOrigin(0.5);
+    const sub = txt(this, 640, 188, '화살표 방향 키를 누른 채 스페이스 연타! (마우스: 화살표 쪽을 누른 채 클릭 연타)', { size: 17, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 4 }).setOrigin(0.5);
     c.add([hint, sub]);
     this.fightUI = c;
   }
@@ -951,15 +1049,25 @@ export class TrawlScene extends Phaser.Scene {
 
   private moveBait(dt: number) {
     const b = this.bait!;
-    const k = this.keys;
     const sp = TUNING.fishing.baitSpeed;
     let vx = 0;
     let vy = 0;
-    if (k.LEFT.isDown || k.A.isDown) vx -= sp;
-    if (k.RIGHT.isDown || k.D.isDown) vx += sp;
-    if (k.UP.isDown || k.W.isDown) vy -= sp;
-    if (k.DOWN.isDown || k.S.isDown) vy += sp;
-    if (vx === 0 && vy === 0) vy = TUNING.fishing.sinkSpeed;
+    if (isHeld(...KEY.left)) vx -= sp;
+    if (isHeld(...KEY.right)) vx += sp;
+    if (isHeld(...KEY.up)) vy -= sp;
+    if (isHeld(...KEY.down)) vy += sp;
+    if (vx === 0 && vy === 0 && this.ptr) {
+      // follow the mouse
+      const dx = this.ptr.x - b.x;
+      const dy = this.ptr.y - b.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 6) {
+        const v = Math.min(sp, d * 4);
+        vx = (dx / d) * v;
+        vy = (dy / d) * v;
+      }
+    }
+    if (vx === 0 && vy === 0 && !this.ptr) vy = TUNING.fishing.sinkSpeed;
     const maxY = Math.min(BED_Y - 20, WATER_Y + TUNING.fishing.lineLength + (owns(G.state, 'longLine') ? TUNING.fishing.longLineExtra : 0));
     const nx = Phaser.Math.Clamp(b.x + vx * dt, 60, 1220);
     const ny = Phaser.Math.Clamp(b.y + vy * dt, WATER_Y + 15, maxY);

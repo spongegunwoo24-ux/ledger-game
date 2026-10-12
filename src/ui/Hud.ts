@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { PALETTE, FONT_TITLE } from '../art/palette';
 import { dayLabel, moonOf, tideOf, weatherOf } from '../core/calendar';
 import { fmtTime, timeOfDayLabel } from '../core/clock';
+import { onKey } from '../core/keys';
 import { G } from '../core/game';
 import { paymentPressure } from '../systems/economy';
 import { paymentStatusLine, trackerEntries } from '../systems/notebook';
@@ -68,18 +69,18 @@ export class Hud {
       this.c.add(
         new Button(scene, bx, 42, '≡', () => scene.scene.launch('Pause', { from: scene.scene.key }), { w: 46, h: 44, size: 24, fill: 0xfff3d6 }),
       );
-      scene.input.keyboard?.on('keydown-ESC', () => {
+      onKey(scene, 'Escape', () => {
         if (!scene.scene.isActive('Pause')) scene.scene.launch('Pause', { from: scene.scene.key });
       });
       bx += 64;
     }
     if (opts.notebook !== false) {
       this.c.add(new Button(scene, bx + 10, 42, '수첩', () => openNotebook(scene), { w: 72, h: 44, size: 18, fill: PALETTE.mint }));
-      scene.input.keyboard?.on('keydown-N', () => openNotebook(scene));
+      onKey(scene, 'KeyN', () => openNotebook(scene));
       bx += 86;
     }
     this.c.add(new Button(scene, bx + 10, 42, '기록', () => openLog(scene), { w: 72, h: 44, size: 18, fill: 0xfff3d6 }));
-    scene.input.keyboard?.on('keydown-L', () => {
+    onKey(scene, 'KeyL', () => {
       if (!scene.children.getByName('dialogueLog')) openLog(scene);
     });
     if (opts.tracker !== false) this.drawTracker();
