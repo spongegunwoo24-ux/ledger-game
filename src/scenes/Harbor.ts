@@ -15,6 +15,7 @@ import { spend } from '../systems/economy';
 import { Button, panel } from '../ui/Button';
 import { DialogueBox, Toasts } from '../ui/Dialogue';
 import { Hud } from '../ui/Hud';
+import { questButtons } from '../ui/questButtons';
 import { runMinigame } from '../ui/minigames';
 import { txt } from '../ui/text';
 import { endSegment } from './director';
@@ -75,6 +76,7 @@ export class HarborScene extends Phaser.Scene {
 
     // buttons
     const sunday = isSunday(s.day);
+    questButtons(this, 'dock', 'dawn', 640, 560, 'Harbor');
     const go = new Button(this, 640, 640, '출항하기', () => this.goOut(), { w: 280, h: 62, size: 26, fill: PALETTE.coral, sub: '바다 지도' });
     go.setDepth(70);
     let bx = 340;

@@ -8,6 +8,7 @@ import { paymentPressure } from '../systems/economy';
 import { paymentStatusLine, trackerEntries } from '../systems/notebook';
 import { Button, panel } from './Button';
 import { openLog } from './Dialogue';
+import { openInventory } from './Inventory';
 import { openNotebook } from './Notebook';
 import { txt } from './text';
 
@@ -64,24 +65,31 @@ export class Hud {
     this.c.add(this.status);
     this.refresh();
 
+    // buttons: ≡ 수첩 기록 가방
+    const overlayOpen = () => ['notebook', 'inventory', 'dialogueLog'].some((n) => scene.children.getByName(n));
     let bx = 500;
     if (opts.pause !== false) {
       this.c.add(
         new Button(scene, bx, 42, '≡', () => scene.scene.launch('Pause', { from: scene.scene.key }), { w: 46, h: 44, size: 24, fill: 0xfff3d6 }),
       );
       onKey(scene, 'Escape', () => {
-        if (!scene.scene.isActive('Pause')) scene.scene.launch('Pause', { from: scene.scene.key });
+        if (!overlayOpen() && !scene.scene.isActive('Pause')) scene.scene.launch('Pause', { from: scene.scene.key });
       });
       bx += 64;
     }
     if (opts.notebook !== false) {
-      this.c.add(new Button(scene, bx + 10, 42, '수첩', () => openNotebook(scene), { w: 72, h: 44, size: 18, fill: PALETTE.mint }));
+      this.c.add(new Button(scene, bx, 42, '수첩', () => openNotebook(scene), { w: 62, h: 44, size: 17, fill: PALETTE.mint }));
       onKey(scene, 'KeyN', () => openNotebook(scene));
-      bx += 86;
+      bx += 68;
     }
-    this.c.add(new Button(scene, bx + 10, 42, '기록', () => openLog(scene), { w: 72, h: 44, size: 18, fill: 0xfff3d6 }));
+    this.c.add(new Button(scene, bx, 42, '기록', () => openLog(scene), { w: 62, h: 44, size: 17, fill: 0xfff3d6 }));
     onKey(scene, 'KeyL', () => {
       if (!scene.children.getByName('dialogueLog')) openLog(scene);
+    });
+    bx += 68;
+    this.c.add(new Button(scene, bx, 42, '가방', () => openInventory(scene, G.state), { w: 62, h: 44, size: 17, fill: PALETTE.butter }));
+    onKey(scene, 'KeyI', () => {
+      if (!scene.children.getByName('inventory')) openInventory(scene, G.state);
     });
     if (opts.tracker !== false) this.drawTracker();
     scene.events.on('update', this.tick, this);

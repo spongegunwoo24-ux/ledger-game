@@ -1,3 +1,5 @@
+import type { Cond } from '../core/conditions';
+import type { GroundId } from '../core/types';
 import type { ShrimpSize } from '../core/types';
 
 export type CatchKind = 'shrimp' | 'crab' | 'fish' | 'trash' | 'turtle' | 'curio' | 'story';
@@ -55,7 +57,11 @@ export interface StoryCatchDef {
   id: string;
   name: string;
   /** day the item is guaranteed in the first tow */
-  day: number;
+  day?: number;
+  /** [변경 2] or: appears in the first tow whenever this holds (e.g. a quest step is current) */
+  requires?: Cond | Cond[];
+  /** only on this ground */
+  ground?: GroundId;
   /** if dropped in the trash, who fishes it back out (story beats always happen) */
   rescueLine: string;
 }

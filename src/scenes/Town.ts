@@ -1,187 +1,734 @@
 import Phaser from 'phaser';
 import { PALETTE, SHADE, FONT_TITLE } from '../art/palette';
-import { portraitKey } from '../art/characters';
+import { charTexKey, portraitKey } from '../art/characters';
+import { TEX_SCALE } from '../art/pen';
 import { ambientWaves, music, sfx } from '../audio/sfx';
-import { TUNING } from '../config/tuning';
-import { check } from '../core/conditions';
 import { isPaymentDay } from '../core/calendar';
+import { holdClock, releaseClock, tickClock } from '../core/clock';
+import { check } from '../core/conditions';
 import { G } from '../core/game';
-import type { LocId } from '../core/types';
+import { isHeld, KEY, onKey } from '../core/keys';
+import type { CharId, LocId } from '../core/types';
 import { initView } from '../core/view';
-import { tickClock } from '../core/clock';
-import { LOCATIONS, type LocationDef } from '../data/locations';
+import { LOCATIONS, locationDef } from '../data/locations';
 import { peopleAt } from '../data/schedules';
-import { FEEL_ICON, feelStateOf } from '../systems/feelings';
 import { notebookEntries } from '../systems/notebook';
 import { Button, panel } from '../ui/Button';
-import { Hud } from '../ui/Hud';
 import { addHeadMark, headMarkFor } from '../ui/headIcon';
+import { Hud } from '../ui/Hud';
 import { getSettings } from '../ui/settings';
 import { txt } from '../ui/text';
 import { checkAfternoonClock, endSegment } from './director';
-import type { FeelId } from '../core/types';
+import { BAY, coastline, doorOf, ROADS, SPOTS, spotOf, walkable, WORLD, type TownSpot } from './town/townMap';
 
-/** where Eli is on the town map (for walking time) */
+/** where Eli is in town (the door he comes out of) */
 let currentLoc: LocId = 'dock';
 export function setTownLoc(l: LocId) {
   currentLoc = l;
 }
 
-/** Afternoon town map (interim until the walkable town in M2): clickable nodes, walking costs clock time. */
+const SPEED = 250;
+const VIEW = { w: 1280, h: 720 };
+const JOY = { x: 120, y: 600, r: 62 };
+const MINI = { x: 14, y: 84, w: 240, h: 135 };
+const ENTER_DIST = 70;
+
+interface Walker {
+  who: CharId;
+  img: Phaser.GameObjects.Image;
+  loc: LocId;
+}
+
+/**
+ * [변경 2] Afternoon: a walkable top-down town (DESIGN §5.2). Eli walks with the arrow keys/WASD,
+ * the on-screen joystick, or by tapping the ground; buildings are entered at their doors.
+ * M or the minimap opens the whole-town map. The land clock runs; 19:00 ends the afternoon.
+ */
 export class TownScene extends Phaser.Scene {
+  private leaving = false;
+  private world!: Phaser.GameObjects.Container;
+  private objs!: Phaser.GameObjects.Container;
+  private eli!: Phaser.GameObjects.Image;
+  private eliShadow!: Phaser.GameObjects.Ellipse;
+  private pos = { x: 0, y: 0 };
+  private scroll = { x: 0, y: 0 };
+  private target: { x: number; y: number; enter?: LocId } | null = null;
+  private joy = { active: false, id: -1, dx: 0, dy: 0 };
+  private joyKnob!: Phaser.GameObjects.Arc;
+  private walkers: Walker[] = [];
+  private prompt!: Button;
+  private promptLoc: LocId | null = null;
+  private arrows!: Phaser.GameObjects.Graphics;
+  private arrowLabels: Phaser.GameObjects.Text[] = [];
+  private mini!: Phaser.GameObjects.Graphics;
+  private miniEli!: Phaser.GameObjects.Arc;
+  private mapOpen = false;
+  private stepT = 0;
+  private targets: LocId[] = [];
+
   constructor() {
     super('Town');
   }
 
-  private leaving = false;
-
   create() {
     initView(this);
     this.leaving = false;
+    this.mapOpen = false;
+    this.target = null;
+    this.walkers = [];
+    this.arrowLabels = [];
+    this.joy = { active: false, id: -1, dx: 0, dy: 0 };
     const s = G.state;
     this.cameras.main.fadeIn(300, 21, 18, 31);
     ambientWaves(true, 0.02);
     music('town');
-    this.drawMap();
     if (s.slotsUsed === 0) this.time.delayedCall(300, () => sfx('bell'));
     s.slotsUsed = 1;
-    // quest markers: where the notebook says to go this afternoon
-    const targets = new Set(notebookEntries(s).filter((e) => e.availableNow && e.seg === 'afternoon' && e.loc).map((e) => e.loc as LocId));
-    for (const loc of LOCATIONS) {
-      if (!check(s, loc.requires)) continue;
-      this.node(loc, targets.has(loc.id), true);
+    this.targets = [...new Set(notebookEntries(s).filter((e) => e.availableNow && e.seg === 'afternoon' && e.loc).map((e) => e.loc as LocId))];
+
+    this.world = this.add.container(0, 0).setDepth(0);
+    this.drawGround();
+    this.objs = this.add.container(0, 0);
+    this.world.add(this.objs);
+    for (const sp of SPOTS) {
+      const def = LOCATIONS.find((l) => l.id === sp.loc);
+      if (def) this.building(sp, def.name, check(s, def.requires));
     }
-    new Hud(this);
-    const g = this.add.graphics().setDepth(700);
-    panel(g, 430, 640, 420, 60, 0xfffaf0, 18);
-    txt(this, 640, 670, '19:00까지 자유. 걸어가는 데도 시간이 든다.', { size: 18 }).setOrigin(0.5).setDepth(701);
-    const label = isPaymentDay(s.day) && !s.flags[`paid_${s.day}`] ? '저녁으로 (은행 17시)' : '저녁으로 →';
-    new Button(this, 1120, 670, label, () => this.finish(), { w: 250, h: 54, size: 20, fill: 0xfff3d6 }).setDepth(700);
-    // where Eli is standing on the map
-    const here = LOCATIONS.find((l) => l.id === currentLoc) ?? LOCATIONS[0];
-    const me = this.add.image(here.x, here.y - 70, 'por_eli').setScale(0.16).setDepth(30);
-    this.tweens.add({ targets: me, y: me.y - 6, duration: 500, yoyo: true, repeat: -1 });
+    this.trees();
+    this.placePeople();
+
+    // Eli at the door he came out of
+    const from = spotOf(currentLoc) ?? spotOf('dock')!;
+    const d = doorOf(from);
+    this.pos = { x: d.x, y: d.y + (from.style === 'pier' ? 0 : 16) };
+    this.eliShadow = this.add.ellipse(0, 0, 44, 14, PALETTE.ink, 0.2);
+    this.eli = this.add.image(0, 0, charTexKey('eli')).setOrigin(0.5, 0.95).setScale(0.8 / TEX_SCALE);
+    this.objs.add([this.eliShadow, this.eli]);
+
+    this.buildUi();
+    this.setupInput();
+    this.updateView();
   }
 
+  // ---------------- drawing the world ----------------
+  private drawGround() {
+    const g = this.add.graphics();
+    this.world.add(g);
+    g.fillStyle(0xcfe9c4, 1).fillRect(0, 0, WORLD.w, WORLD.h);
+    // grass texture
+    for (let i = 0; i < 260; i++) {
+      const x = (i * 397) % WORLD.w;
+      const y = (i * 241) % WORLD.h;
+      g.fillStyle(0xb8dfae, 0.7).fillEllipse(x, y, 26, 8);
+    }
+    // sand along the coast and the sea
+    const coast = coastline();
+    g.fillStyle(PALETTE.sand, 1);
+    g.beginPath();
+    g.moveTo(0, coast[0][1] - 70);
+    for (const [x, y] of coast) g.lineTo(x, y - 70);
+    g.lineTo(WORLD.w, WORLD.h);
+    g.lineTo(0, WORLD.h);
+    g.closePath();
+    g.fillPath();
+    g.fillStyle(PALETTE.sea, 1);
+    g.beginPath();
+    g.moveTo(0, coast[0][1]);
+    for (const [x, y] of coast) g.lineTo(x, y);
+    g.lineTo(WORLD.w, WORLD.h);
+    g.lineTo(0, WORLD.h);
+    g.closePath();
+    g.fillPath();
+    g.lineStyle(5, SHADE.foam, 0.9);
+    g.beginPath();
+    g.moveTo(0, coast[0][1]);
+    for (const [x, y] of coast) g.lineTo(x, y);
+    g.strokePath();
+    // the lighthouse bay
+    g.fillStyle(PALETTE.sand, 1);
+    g.beginPath();
+    BAY.forEach(([x, y], i) => (i === 0 ? g.moveTo(x - 40, y) : g.lineTo(x - 30, y + 30)));
+    g.closePath();
+    g.fillPath();
+    g.fillStyle(PALETTE.sea, 1);
+    g.beginPath();
+    BAY.forEach(([x, y], i) => (i === 0 ? g.moveTo(x, y) : g.lineTo(x, y)));
+    g.closePath();
+    g.fillPath();
+    // waves
+    for (let i = 0; i < 40; i++) {
+      const x = (i * 173) % WORLD.w;
+      const y = WORLD.h - 10 - ((i * 37) % 40);
+      g.lineStyle(3, 0xffffff, 0.5).beginPath().arc(x, y, 12, Math.PI * 1.1, Math.PI * 1.9).strokePath();
+    }
+    // roads
+    for (const r of ROADS) {
+      for (const [w, col] of [
+        [64, 0xe3cc96],
+        [52, PALETTE.sand],
+      ] as const) {
+        g.lineStyle(w, col, 1);
+        g.beginPath();
+        g.moveTo(r[0][0], r[0][1]);
+        for (const p of r.slice(1)) g.lineTo(p[0], p[1]);
+        g.strokePath();
+        for (const p of r) g.fillStyle(col, 1).fillCircle(p[0], p[1], w / 2);
+      }
+    }
+  }
+
+  private trees() {
+    const spots: [number, number][] = [];
+    for (let i = 0; i < 70; i++) spots.push([((i * 331) % (WORLD.w - 200)) + 100, ((i * 197) % (WORLD.h - 420)) + 160]);
+    for (const [x, y] of spots) {
+      if (!walkable(x, y) || this.nearRoad(x, y, 70)) continue;
+      const c = this.add.container(x, y);
+      const g = this.add.graphics();
+      g.fillStyle(PALETTE.ink, 0.15).fillEllipse(0, 2, 50, 14);
+      g.fillStyle(SHADE.woodDark, 1).fillRect(-5, -36, 10, 36);
+      g.fillStyle(SHADE.palm, 1).fillCircle(0, -52, 26).fillCircle(-18, -40, 18).fillCircle(18, -40, 18);
+      g.lineStyle(3, PALETTE.ink, 0.8).strokeCircle(0, -52, 26);
+      c.add(g);
+      this.objs.add(c);
+    }
+  }
+
+  private nearRoad(x: number, y: number, r: number): boolean {
+    for (const road of ROADS) {
+      for (let i = 1; i < road.length; i++) {
+        const [x0, y0] = road[i - 1];
+        const [x1, y1] = road[i];
+        const t = Phaser.Math.Clamp(((x - x0) * (x1 - x0) + (y - y0) * (y1 - y0)) / ((x1 - x0) ** 2 + (y1 - y0) ** 2), 0, 1);
+        if (Phaser.Math.Distance.Between(x, y, x0 + t * (x1 - x0), y0 + t * (y1 - y0)) < r) return true;
+      }
+    }
+    for (const s of SPOTS) if (Phaser.Math.Distance.Between(x, y, s.x, s.y - 40) < 150) return true;
+    return false;
+  }
+
+  private building(sp: TownSpot, name: string, open: boolean) {
+    const c = this.add.container(sp.x, sp.y);
+    const g = this.add.graphics();
+    c.add(g);
+    const ink = PALETTE.ink;
+    const box = (w: number, h: number, col: number) => {
+      g.fillStyle(ink, 0.18).fillRoundedRect(-w / 2 + 6, -h + 6, w, h, 10);
+      g.fillStyle(col, 1).fillRoundedRect(-w / 2, -h, w, h, 10);
+      g.lineStyle(4, ink, 1).strokeRoundedRect(-w / 2, -h, w, h, 10);
+    };
+    const roof = (w: number, h: number, base: number, col: number) => {
+      g.fillStyle(col, 1).fillTriangle(-w / 2 - 12, -base, w / 2 + 12, -base, 0, -base - h);
+      g.lineStyle(4, ink, 1).strokeTriangle(-w / 2 - 12, -base, w / 2 + 12, -base, 0, -base - h);
+    };
+    const door = (col: number = SHADE.woodDark) => {
+      g.fillStyle(col, 1).fillRoundedRect(-18, -54, 36, 54, { tl: 14, tr: 14, bl: 0, br: 0 });
+      g.lineStyle(3, ink, 1).strokeRoundedRect(-18, -54, 36, 54, { tl: 14, tr: 14, bl: 0, br: 0 });
+    };
+    const windows = (w: number, y: number) => {
+      for (const wx of [-w / 2 + 34, w / 2 - 34]) {
+        g.fillStyle(0xbfe8f2, 1).fillRoundedRect(wx - 16, y, 32, 28, 4);
+        g.lineStyle(3, ink, 1).strokeRoundedRect(wx - 16, y, 32, 28, 4);
+      }
+    };
+    const w = sp.hw * 2;
+    const h = sp.hh;
+    switch (sp.style) {
+      case 'pier': {
+        g.fillStyle(SHADE.wood, 1).fillRect(-34, -40, 68, 250);
+        for (let y = -40; y < 210; y += 22) g.lineStyle(2, SHADE.woodDark, 1).lineBetween(-34, y, 34, y);
+        g.lineStyle(4, ink, 1).strokeRect(-34, -40, 68, 250);
+        for (const py of [0, 90, 180]) {
+          g.fillStyle(SHADE.woodDark, 1).fillRect(-42, py, 10, 30).fillRect(32, py, 10, 30);
+        }
+        // Mary Lou tied up beside the pier
+        const boat = this.add.image(150, 190, 'boat_marylou').setScale(0.42);
+        c.addAt(boat, 0);
+        break;
+      }
+      case 'dunes':
+        for (const [dx, dy, r] of [
+          [-60, -10, 60],
+          [40, -20, 70],
+          [110, 10, 45],
+        ])
+          g.fillStyle(0xead39a, 1).fillEllipse(dx, dy, r * 2, r * 0.9);
+        for (let i = 0; i < 8; i++) g.lineStyle(3, 0x8fb878, 1).lineBetween(-80 + i * 25, -30, -86 + i * 25, -52);
+        break;
+      case 'board':
+        g.fillStyle(SHADE.woodDark, 1).fillRect(-50, -20, 10, 30).fillRect(40, -20, 10, 30);
+        g.fillStyle(SHADE.wood, 1).fillRoundedRect(-62, -92, 124, 76, 6);
+        g.lineStyle(4, ink, 1).strokeRoundedRect(-62, -92, 124, 76, 6);
+        for (let i = 0; i < 7; i++) g.fillStyle(i % 3 ? 0xfffaf0 : 0xffe29a, 1).fillRect(-54 + (i % 4) * 28, -84 + Math.floor(i / 4) * 34, 22, 28);
+        break;
+      case 'lighthouse':
+        g.fillStyle(ink, 0.18).fillEllipse(6, 4, 110, 26);
+        g.fillStyle(0xfffaf0, 1).fillRect(-34, -230, 68, 230);
+        for (let y = -200; y < 0; y += 60) g.fillStyle(PALETTE.coral, 1).fillRect(-34, y, 68, 26);
+        g.lineStyle(4, ink, 1).strokeRect(-34, -230, 68, 230);
+        g.fillStyle(PALETTE.butter, 1).fillRect(-26, -270, 52, 40);
+        g.lineStyle(4, ink, 1).strokeRect(-26, -270, 52, 40);
+        g.fillStyle(PALETTE.ink, 1).fillTriangle(-34, -270, 34, -270, 0, -300);
+        door();
+        break;
+      case 'church':
+        box(w, h, sp.color);
+        roof(w, 60, h, 0xc9b6e4);
+        g.fillStyle(sp.color, 1).fillRect(-22, -h - 130, 44, 70);
+        g.lineStyle(4, ink, 1).strokeRect(-22, -h - 130, 44, 70);
+        g.fillStyle(0xc9b6e4, 1).fillTriangle(-30, -h - 130, 30, -h - 130, 0, -h - 180);
+        g.lineStyle(4, ink, 1).strokeTriangle(-30, -h - 130, 30, -h - 130, 0, -h - 180);
+        g.lineStyle(4, ink, 1).lineBetween(0, -h - 180, 0, -h - 206).lineBetween(-10, -h - 196, 10, -h - 196);
+        windows(w, -h + 26);
+        door(0x8a5a3c);
+        break;
+      case 'bank':
+        box(w, h, sp.color);
+        g.fillStyle(0xd8d0bc, 1).fillTriangle(-w / 2 - 10, -h, w / 2 + 10, -h, 0, -h - 46);
+        g.lineStyle(4, ink, 1).strokeTriangle(-w / 2 - 10, -h, w / 2 + 10, -h, 0, -h - 46);
+        for (const cx of [-70, -40, 40, 70]) g.fillStyle(0xfffaf0, 1).fillRect(cx - 7, -h + 8, 14, h - 8).lineStyle(2, ink, 1).strokeRect(cx - 7, -h + 8, 14, h - 8);
+        door(0x5a6b8a);
+        break;
+      case 'diner':
+        box(w, h, sp.color);
+        g.fillStyle(0xfffaf0, 1).fillRect(-w / 2, -h, w, 18);
+        for (let i = 0; i < w; i += 22) g.fillStyle(PALETTE.coral, 1).fillRect(-w / 2 + i, -h, 11, 18);
+        g.lineStyle(4, ink, 1).strokeRect(-w / 2, -h, w, 18);
+        windows(w, -h + 34);
+        door(0xbfe8f2);
+        break;
+      case 'closed':
+        box(w, h, sp.color);
+        roof(w, 50, h, 0x9a96a8);
+        g.fillStyle(0x9a96a8, 1).fillRect(-w / 2 + 18, -h + 30, 40, 28).fillRect(w / 2 - 58, -h + 30, 40, 28);
+        door(0x7d7896);
+        g.fillStyle(0xfffaf0, 1).fillRect(-12, -44, 24, 16);
+        break;
+      default:
+        box(w, h, sp.color);
+        roof(w, sp.style === 'home' ? 64 : 54, h, sp.style === 'home' ? PALETTE.coral : sp.style === 'shop' ? 0xffa45c : 0xe85d5d);
+        windows(w, -h + 26);
+        door();
+    }
+    // sign
+    const signY = sp.style === 'pier' ? -70 : sp.style === 'dunes' ? -70 : sp.style === 'board' ? -110 : sp.style === 'lighthouse' ? 24 : 24;
+    const label = txt(this, 0, signY, open ? name : `${name} (닫힘)`, {
+      size: 18,
+      color: open ? '#3B3355' : '#9a96a8',
+      stroke: '#FFFAF0',
+      strokeThickness: 5,
+    }).setOrigin(0.5, 0);
+    c.add(label);
+    // quest marker over the building
+    if (this.targets.includes(sp.loc) && getSettings().guidance) {
+      const top = sp.style === 'lighthouse' ? -320 : sp.style === 'pier' || sp.style === 'dunes' ? -110 : sp.style === 'board' ? -140 : sp.style === 'church' ? -sp.hh - 230 : -sp.hh - 90;
+      const m = addHeadMark(this, 0, top, 'quest', 40);
+      if (m) c.add(m);
+    }
+    const z = this.add.zone(0, -Math.max(60, sp.hh) / 2, Math.max(120, sp.hw * 2), Math.max(80, sp.hh + 40)).setInteractive({ useHandCursor: true });
+    z.on('pointerdown', () => this.walkTo(sp.loc));
+    c.add(z);
+    this.objs.add(c);
+  }
+
+  private placePeople() {
+    const s = G.state;
+    for (const sp of SPOTS) {
+      const d = doorOf(sp);
+      const ppl = peopleAt(s, sp.loc);
+      ppl.slice(0, 4).forEach((who, i) => {
+        const side = i % 2 === 0 ? -1 : 1;
+        const x = d.x + side * (70 + Math.floor(i / 2) * 50);
+        const y = d.y + 30 + (i % 2) * 6;
+        const img = this.add.image(x, y, charTexKey(who)).setOrigin(0.5, 0.95).setScale((-side * 0.75) / TEX_SCALE, 0.75 / TEX_SCALE);
+        img.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.walkTo(sp.loc));
+        this.objs.add(img);
+        this.walkers.push({ who, img, loc: sp.loc });
+        // a little pacing
+        this.tweens.add({
+          targets: img,
+          x: x + side * 26,
+          duration: 1800 + i * 300,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.InOut',
+          delay: i * 400,
+          onYoyo: () => img.setScale(-img.scaleX, img.scaleY),
+          onRepeat: () => img.setScale(-img.scaleX, img.scaleY),
+        });
+        const mark = headMarkFor(s, who, sp.loc);
+        if (mark && mark !== 'talk') {
+          const m = addHeadMark(this, x, y - 118, mark, 28);
+          if (m) {
+            this.objs.add(m);
+            m.setData('follow', img);
+          }
+        }
+      });
+    }
+  }
+
+  // ---------------- UI ----------------
+  private buildUi() {
+    const s = G.state;
+    new Hud(this);
+    // joystick
+    const base = this.add.circle(JOY.x, JOY.y, JOY.r, PALETTE.ink, 0.18).setDepth(700).setStrokeStyle(4, 0xfffaf0, 0.8);
+    base.setInteractive();
+    this.joyKnob = this.add.circle(JOY.x, JOY.y, 28, 0xfffaf0, 0.85).setDepth(701).setStrokeStyle(3, PALETTE.ink, 0.8);
+    txt(this, JOY.x, JOY.y + JOY.r + 14, '이동', { size: 13, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 3 }).setOrigin(0.5).setDepth(701);
+    // minimap
+    const mg = this.add.graphics().setDepth(700);
+    panel(mg, MINI.x - 4, MINI.y - 4, MINI.w + 8, MINI.h + 8, 0xfffaf0, 10, 0.95);
+    this.mini = this.add.graphics().setDepth(701);
+    this.drawMap(this.mini, MINI.x, MINI.y, MINI.w / WORLD.w, false);
+    this.miniEli = this.add.circle(0, 0, 4, PALETTE.killerRed).setDepth(702).setStrokeStyle(2, 0xffffff);
+    txt(this, MINI.x + MINI.w - 4, MINI.y + MINI.h - 2, '지도 (M)', { size: 12, color: '#6b6385' }).setOrigin(1, 1).setDepth(702);
+    this.add.zone(MINI.x, MINI.y, MINI.w, MINI.h).setOrigin(0).setDepth(703).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.openMap());
+    // off-screen arrows
+    this.arrows = this.add.graphics().setDepth(690);
+    // enter prompt
+    this.prompt = new Button(this, 640, 640, '', () => this.enterPrompt(), { w: 380, h: 54, size: 20, fill: PALETTE.butter, sub: 'Space / Enter' }).setDepth(705);
+    this.prompt.setVisible(false);
+    const label = isPaymentDay(s.day) && !s.flags[`paid_${s.day}`] ? '저녁으로 (은행 17시)' : '저녁으로 →';
+    new Button(this, 1140, 672, label, () => this.finish(), { w: 230, h: 50, size: 19, fill: 0xfff3d6 }).setDepth(705);
+    txt(this, 640, 700, '방향키·WASD / 왼쪽 아래 조이스틱 / 땅을 누르면 걸어간다 · 문 앞에서 Space', { size: 13, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 3 })
+      .setOrigin(0.5)
+      .setDepth(704);
+  }
+
+  /** the whole town drawn small into g at (ox, oy) with scale k */
+  private drawMap(g: Phaser.GameObjects.Graphics, ox: number, oy: number, k: number, big: boolean) {
+    g.fillStyle(0xcfe9c4, 1).fillRect(ox, oy, WORLD.w * k, WORLD.h * k);
+    const coast = coastline();
+    g.fillStyle(PALETTE.sea, 1);
+    g.beginPath();
+    g.moveTo(ox, oy + coast[0][1] * k);
+    for (const [x, y] of coast) g.lineTo(ox + x * k, oy + y * k);
+    g.lineTo(ox + WORLD.w * k, oy + WORLD.h * k);
+    g.lineTo(ox, oy + WORLD.h * k);
+    g.closePath();
+    g.fillPath();
+    g.beginPath();
+    BAY.forEach(([x, y], i) => (i === 0 ? g.moveTo(ox + x * k, oy + y * k) : g.lineTo(ox + x * k, oy + y * k)));
+    g.closePath();
+    g.fillPath();
+    g.lineStyle(Math.max(2, 52 * k), PALETTE.sand, 1);
+    for (const r of ROADS) {
+      g.beginPath();
+      g.moveTo(ox + r[0][0] * k, oy + r[0][1] * k);
+      for (const p of r.slice(1)) g.lineTo(ox + p[0] * k, oy + p[1] * k);
+      g.strokePath();
+    }
+    for (const sp of SPOTS) {
+      const bw = Math.max(6, sp.hw * 2 * k);
+      const bh = Math.max(5, sp.hh * k);
+      const col = this.targets.includes(sp.loc) ? PALETTE.butter : sp.style === 'home' ? PALETTE.peach : 0xfffaf0;
+      g.fillStyle(col, 1).fillRect(ox + sp.x * k - bw / 2, oy + (sp.y - sp.hh) * k, bw, bh);
+      g.lineStyle(big ? 2 : 1, PALETTE.ink, 1).strokeRect(ox + sp.x * k - bw / 2, oy + (sp.y - sp.hh) * k, bw, bh);
+    }
+  }
+
+  private openMap() {
+    if (this.mapOpen || this.leaving) return;
+    this.mapOpen = true;
+    const token = {};
+    holdClock(token);
+    const k = 0.42;
+    const ox = 640 - (WORLD.w * k) / 2;
+    const oy = 392 - (WORLD.h * k) / 2;
+    const c = this.add.container(0, 0).setDepth(1300);
+    const shade = this.add.rectangle(0, 0, 1280, 720, PALETTE.ink, 0.55).setOrigin(0).setInteractive();
+    const g = this.add.graphics();
+    panel(g, ox - 14, oy - 50, WORLD.w * k + 28, WORLD.h * k + 64, 0xfbf6e8, 14);
+    c.add([shade, g]);
+    const mg = this.add.graphics();
+    this.drawMap(mg, ox, oy, k, true);
+    c.add(mg);
+    c.add(txt(this, 640, oy - 28, '펠리컨 코브 지도 · 장소를 누르면 그리로 걸어간다', { size: 20, fontFamily: FONT_TITLE }).setOrigin(0.5));
+    c.add(txt(this, ox + WORLD.w * k, oy - 28, '닫기 (M / Esc)', { size: 14, color: '#9a96a8' }).setOrigin(1, 0.5));
+    const s = G.state;
+    for (const sp of SPOTS) {
+      const def = locationDef(sp.loc);
+      const open = check(s, def.requires);
+      const x = ox + sp.x * k;
+      const y = oy + sp.y * k;
+      c.add(txt(this, x, y + 4, def.name, { size: 14, color: open ? '#3B3355' : '#9a96a8', stroke: '#FFFAF0', strokeThickness: 4 }).setOrigin(0.5, 0));
+      const ppl = peopleAt(s, sp.loc).slice(0, 3);
+      ppl.forEach((p, i) => c.add(this.add.image(x - (ppl.length - 1) * 11 + i * 22, y - sp.hh * k - 12, portraitKey(p)).setScale(0.09)));
+      if (this.targets.includes(sp.loc)) {
+        const m = addHeadMark(this, x + 26, y - sp.hh * k - 14, 'quest', 24);
+        if (m) c.add(m);
+      }
+      const z = this.add.zone(x, y - (sp.hh * k) / 2, Math.max(70, sp.hw * 2 * k), Math.max(50, sp.hh * k + 30)).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        close();
+        this.walkTo(sp.loc);
+      });
+      c.add(z);
+    }
+    const me = this.add.circle(ox + this.pos.x * k, oy + this.pos.y * k, 8, PALETTE.killerRed).setStrokeStyle(3, 0xffffff);
+    c.add(me);
+    c.add(txt(this, ox + this.pos.x * k, oy + this.pos.y * k - 22, '나', { size: 14, color: '#d7263d', stroke: '#FFFAF0', strokeThickness: 4 }).setOrigin(0.5));
+    this.tweens.add({ targets: me, scale: 1.4, yoyo: true, repeat: -1, duration: 500 });
+    let open = true;
+    const close = () => {
+      if (!open) return;
+      open = false;
+      releaseClock(token);
+      window.removeEventListener('keydown', key);
+      c.destroy();
+      this.time.delayedCall(50, () => (this.mapOpen = false));
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.code === 'KeyM' || e.code === 'Escape') close();
+    };
+    window.setTimeout(() => open && window.addEventListener('keydown', key), 0);
+    shade.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (p.worldX < ox - 14 || p.worldX > ox + WORLD.w * k + 14 || p.worldY < oy - 50 || p.worldY > oy + WORLD.h * k + 14) close();
+    });
+    this.events.once('shutdown', close);
+  }
+
+  // ---------------- input ----------------
+  private setupInput() {
+    onKey(this, 'KeyM', () => {
+      if (!this.overlayOpen()) this.openMap();
+    });
+    onKey(this, ['Space', 'Enter', 'NumpadEnter'], () => {
+      if (!this.overlayOpen()) this.enterPrompt();
+    });
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
+      if (this.leaving || this.overlayOpen()) return;
+      const sx = p.worldX;
+      const sy = p.worldY;
+      if (Phaser.Math.Distance.Between(sx, sy, JOY.x, JOY.y) < JOY.r + 40) {
+        this.joy = { active: true, id: p.id, dx: 0, dy: 0 };
+        this.target = null;
+        this.moveJoy(sx, sy);
+        return;
+      }
+      if (over.length) return;
+      if (sy < 84) return;
+      this.target = { x: sx + this.scroll.x, y: sy + this.scroll.y };
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (this.joy.active && p.id === this.joy.id) this.moveJoy(p.worldX, p.worldY);
+    });
+    const up = (p: Phaser.Input.Pointer) => {
+      if (p.id !== this.joy.id) return;
+      this.joy = { active: false, id: -1, dx: 0, dy: 0 };
+      this.joyKnob.setPosition(JOY.x, JOY.y);
+    };
+    this.input.on('pointerup', up);
+    this.input.on('pointerupoutside', up);
+  }
+
+  private moveJoy(x: number, y: number) {
+    let dx = x - JOY.x;
+    let dy = y - JOY.y;
+    const d = Math.hypot(dx, dy);
+    if (d > JOY.r) {
+      dx = (dx / d) * JOY.r;
+      dy = (dy / d) * JOY.r;
+    }
+    this.joyKnob.setPosition(JOY.x + dx, JOY.y + dy);
+    this.joy.dx = dx / JOY.r;
+    this.joy.dy = dy / JOY.r;
+  }
+
+  private overlayOpen(): boolean {
+    return this.mapOpen || ['notebook', 'inventory', 'dialogueLog'].some((n) => !!this.children.getByName(n));
+  }
+
+  /** Walk to a place's door and go in. */
+  walkTo(loc: LocId) {
+    if (this.leaving) return;
+    const sp = spotOf(loc);
+    if (!sp) return;
+    const d = doorOf(sp);
+    this.target = { x: d.x, y: d.y + 8, enter: loc };
+  }
+
+  // ---------------- frame ----------------
   update(_t: number, delta: number) {
     const s = G.state;
     if (this.leaving) return;
-    tickClock(s, delta, 'land');
-    if (checkAfternoonClock(this, 'Town')) this.leaving = true;
-  }
-
-  private drawMap() {
-    const g = this.add.graphics().setDepth(0);
-    g.fillStyle(0xcfe9c4, 1).fillRect(0, 0, 1280, 720);
-    // sea along the bottom-left
-    g.fillStyle(PALETTE.sea, 1);
-    g.beginPath();
-    g.moveTo(0, 520);
-    g.lineTo(180, 560);
-    g.lineTo(300, 640);
-    g.lineTo(560, 700);
-    g.lineTo(1280, 690);
-    g.lineTo(1280, 720);
-    g.lineTo(0, 720);
-    g.closePath();
-    g.fillPath();
-    g.fillStyle(PALETTE.sea, 1).fillTriangle(1080, 0, 1280, 0, 1280, 160);
-    // roads
-    g.lineStyle(26, PALETTE.sand, 1);
-    const road = (pts: number[][]) => {
-      g.beginPath();
-      g.moveTo(pts[0][0], pts[0][1]);
-      for (const p of pts.slice(1)) g.lineTo(p[0], p[1]);
-      g.strokePath();
-    };
-    road([
-      [170, 250],
-      [420, 180],
-      [560, 330],
-      [760, 200],
-      [1060, 240],
-      [1180, 120],
-    ]);
-    road([
-      [240, 430],
-      [560, 330],
-      [660, 440],
-      [900, 360],
-      [1150, 400],
-    ]);
-    road([
-      [120, 620],
-      [330, 560],
-      [470, 600],
-      [660, 440],
-      [760, 560],
-      [900, 620],
-      [1000, 520],
-    ]);
-    // trees
-    for (let i = 0; i < 26; i++) {
-      const x = (i * 197) % 1240 + 20;
-      const y = (i * 131) % 460 + 120;
-      g.fillStyle(SHADE.palm, 0.8).fillCircle(x, y, 12);
+    const dt = Math.min(0.05, delta / 1000);
+    const blocked = this.overlayOpen() || this.scene.isActive('Pause');
+    if (!blocked) {
+      tickClock(s, delta, 'land');
+      if (checkAfternoonClock(this, 'Town')) {
+        this.leaving = true;
+        return;
+      }
+      this.move(dt);
     }
-    txt(this, 640, 104, '펠리컨 코브', { size: 30, fontFamily: FONT_TITLE, color: '#3B3355' }).setOrigin(0.5).setDepth(1);
+    this.updateView();
   }
 
-  private node(loc: LocationDef, marked: boolean, canGo: boolean) {
-    const s = G.state;
-    const c = this.add.container(loc.x, loc.y).setDepth(10);
-    const g = this.add.graphics();
-    const col = loc.id === 'home' ? PALETTE.peach : loc.id === 'pharmacy' ? 0xd9d4e3 : PALETTE.butter;
-    g.fillStyle(PALETTE.ink, 0.2).fillRoundedRect(-36, -26, 76, 60, 14);
-    g.fillStyle(col, 1).fillRoundedRect(-38, -30, 76, 60, 14);
-    g.lineStyle(3, PALETTE.ink, 1).strokeRoundedRect(-38, -30, 76, 60, 14);
-    g.fillStyle(PALETTE.coral, 1).fillTriangle(-30, -30, 30, -30, 0, -52);
-    g.lineStyle(3, PALETTE.ink, 1).strokeTriangle(-30, -30, 30, -30, 0, -52);
-    c.add(g);
-    c.add(txt(this, 0, 40, loc.name, { size: 16, color: '#3B3355', stroke: '#FFFAF0', strokeThickness: 4 }).setOrigin(0.5, 0));
-    // people present
-    const ppl = peopleAt(s, loc.id);
-    ppl.slice(0, 3).forEach((p, i) => {
-      const px = -30 + i * 30;
-      const img = this.add.image(px, -2, portraitKey(p)).setScale(0.13);
-      c.add(img);
-      const fv = s.feelings[p as FeelId];
-      if (fv !== undefined) c.add(txt(this, px + 10, 10, FEEL_ICON[feelStateOf(fv)], { size: 11, color: '#3B3355' }).setOrigin(0.5));
-      const mk = headMarkFor(s, p, loc.id);
-      const hm = mk === 'talk' ? null : addHeadMark(this, px, -40, mk, 24);
-      if (hm) c.add(hm);
-    });
-    if (marked && getSettings().guidance) {
-      const m = txt(this, 30, -62, '!', { size: 30, fontFamily: FONT_TITLE, color: '#D7263D', stroke: '#FFFAF0', strokeThickness: 5 }).setOrigin(0.5);
-      c.add(m);
-      this.tweens.add({ targets: m, y: -70, duration: 450, yoyo: true, repeat: -1 });
+  private move(dt: number) {
+    let vx = 0;
+    let vy = 0;
+    if (isHeld(...KEY.left)) vx -= 1;
+    if (isHeld(...KEY.right)) vx += 1;
+    if (isHeld(...KEY.up)) vy -= 1;
+    if (isHeld(...KEY.down)) vy += 1;
+    if (vx || vy) this.target = null;
+    if (!vx && !vy && this.joy.active && Math.hypot(this.joy.dx, this.joy.dy) > 0.15) {
+      vx = this.joy.dx;
+      vy = this.joy.dy;
     }
-    c.setSize(90, 90).setInteractive({ useHandCursor: canGo || loc.id === 'home' });
-    c.on('pointerover', () => c.setScale(1.08));
-    c.on('pointerout', () => c.setScale(1));
-    c.on('pointerdown', () => this.visit(loc, canGo));
+    if (!vx && !vy && this.target) {
+      const dx = this.target.x - this.pos.x;
+      const dy = this.target.y - this.pos.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 8) {
+        const enter = this.target.enter;
+        this.target = null;
+        if (enter) this.enter(enter);
+        return;
+      }
+      vx = dx / d;
+      vy = dy / d;
+    }
+    const len = Math.hypot(vx, vy);
+    if (len > 1) {
+      vx /= len;
+      vy /= len;
+    }
+    if (!vx && !vy) {
+      this.eli.setAngle(0);
+      return;
+    }
+    const step = SPEED * dt;
+    const nx = this.pos.x + vx * step;
+    const ny = this.pos.y + vy * step;
+    let moved = false;
+    if (walkable(nx, ny)) {
+      this.pos = { x: nx, y: ny };
+      moved = true;
+    } else if (walkable(nx, this.pos.y)) {
+      this.pos.x = nx;
+      moved = true;
+    } else if (walkable(this.pos.x, ny)) {
+      this.pos.y = ny;
+      moved = true;
+    }
+    if (!moved && this.target) {
+      // stuck on the way to a tapped point: give up unless it was a door we are next to
+      const enter = this.target.enter;
+      const near = Phaser.Math.Distance.Between(this.pos.x, this.pos.y, this.target.x, this.target.y) < ENTER_DIST;
+      this.target = null;
+      if (enter && near) this.enter(enter);
+    }
+    if (vx) this.eli.setScale((vx < 0 ? -1 : 1) * Math.abs(this.eli.scaleX), this.eli.scaleY);
+    this.stepT += dt;
+    this.eli.setAngle(Math.sin(this.stepT * 14) * 4);
+    if (this.stepT > 0.32) {
+      this.stepT = 0;
+      sfx('step');
+    }
   }
 
-  private visit(loc: LocationDef, canGo: boolean) {
+  private updateView() {
+    this.scroll.x = Phaser.Math.Clamp(this.pos.x - VIEW.w / 2, 0, WORLD.w - VIEW.w);
+    this.scroll.y = Phaser.Math.Clamp(this.pos.y - VIEW.h / 2 - 20, 0, WORLD.h - VIEW.h);
+    this.world.setPosition(-this.scroll.x, -this.scroll.y);
+    this.eli.setPosition(this.pos.x, this.pos.y);
+    this.eliShadow.setPosition(this.pos.x, this.pos.y);
+    // marks follow their walkers
+    for (const o of this.objs.list) {
+      const f = o.getData?.('follow') as Phaser.GameObjects.Image | undefined;
+      if (f && 'x' in o) (o as Phaser.GameObjects.Container).x = f.x;
+    }
+    this.objs.sort('y');
+    // minimap
+    const k = MINI.w / WORLD.w;
+    this.miniEli.setPosition(MINI.x + this.pos.x * k, MINI.y + this.pos.y * k);
+    // door prompt
+    let near: LocId | null = null;
+    let best = ENTER_DIST;
+    for (const sp of SPOTS) {
+      const d = doorOf(sp);
+      const dist = Phaser.Math.Distance.Between(this.pos.x, this.pos.y, d.x, d.y);
+      if (dist < best) {
+        best = dist;
+        near = sp.loc;
+      }
+    }
+    if (near !== this.promptLoc) {
+      this.promptLoc = near;
+      if (near) {
+        const def = locationDef(near);
+        const open = check(G.state, def.requires);
+        this.prompt.setText(near === 'home' ? '집에 들어가 하루 마치기' : open ? `들어가기: ${def.name}` : `${def.name}: 잠겨 있다`);
+        this.prompt.setVisible(true);
+      } else this.prompt.setVisible(false);
+    }
+    this.drawArrows();
+  }
+
+  /** arrows at the screen edge pointing to today's quest places that are off screen */
+  private drawArrows() {
+    const g = this.arrows;
+    g.clear();
+    this.arrowLabels.forEach((t) => t.destroy());
+    this.arrowLabels = [];
+    if (!getSettings().guidance) return;
+    for (const loc of this.targets) {
+      const sp = spotOf(loc);
+      if (!sp) continue;
+      const sx = sp.x - this.scroll.x;
+      const sy = sp.y - 60 - this.scroll.y;
+      if (sx > 20 && sx < VIEW.w - 20 && sy > 90 && sy < VIEW.h - 20) continue;
+      const cx = 640;
+      const cy = 380;
+      const ang = Math.atan2(sy - cy, sx - cx);
+      // clamp to an inner rectangle
+      const hw = 600;
+      const hh = 250;
+      const t = Math.min(hw / Math.abs(Math.cos(ang) || 1e-6), hh / Math.abs(Math.sin(ang) || 1e-6));
+      const ax = cx + Math.cos(ang) * t;
+      const ay = cy + Math.sin(ang) * t;
+      const pts = [0, -0.5, 0.5].map((da, i) => {
+        const r = i === 0 ? 26 : 16;
+        return { x: ax + Math.cos(ang + da * (i === 0 ? 0 : 2.4)) * r, y: ay + Math.sin(ang + da * (i === 0 ? 0 : 2.4)) * r };
+      });
+      g.fillStyle(PALETTE.butter, 1).fillTriangle(pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y);
+      g.lineStyle(3, PALETTE.ink, 1).strokeTriangle(pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y);
+      const lt = txt(this, ax - Math.cos(ang) * 40, ay - Math.sin(ang) * 30, locationDef(loc).name, { size: 14, color: '#3B3355', stroke: '#FFE29A', strokeThickness: 4 })
+        .setOrigin(0.5)
+        .setDepth(691);
+      this.arrowLabels.push(lt);
+    }
+  }
+
+  // ---------------- leaving ----------------
+  private enterPrompt() {
+    if (this.promptLoc) this.enter(this.promptLoc);
+  }
+
+  private enter(loc: LocId) {
     const s = G.state;
     if (this.leaving) return;
-    if (loc.id === 'home') {
+    if (loc === 'home') {
       this.finish();
       return;
     }
-    if (!canGo) return;
-    // [변경 1] walking takes time (interim until the walkable town in M2)
-    const from = LOCATIONS.find((l) => l.id === currentLoc) ?? LOCATIONS[0];
-    const mins = Math.round((Phaser.Math.Distance.Between(from.x, from.y, loc.x, loc.y) / 100) * TUNING.clock.walkPer100px);
-    s.time = Math.min(TUNING.clock.dusk, s.time + mins);
-    currentLoc = loc.id;
+    const def = locationDef(loc);
+    if (!check(s, def.requires)) {
+      sfx('thud');
+      return;
+    }
+    currentLoc = loc;
     this.leaving = true;
     sfx('step');
     this.cameras.main.fadeOut(250, 21, 18, 31);
-    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Location', { loc: loc.id }));
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Location', { loc }));
   }
 
   private finish() {
+    if (this.leaving) return;
     this.leaving = true;
     currentLoc = 'home';
     this.cameras.main.fadeOut(350, 21, 18, 31);

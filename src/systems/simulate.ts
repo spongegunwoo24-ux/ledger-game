@@ -28,6 +28,8 @@ interface ProfileDef {
   comboBonus: number;
   /** average dollars per morning from the rod */
   rodDollars: number;
+  /** dollars of bait bought for the rod each morning */
+  rodBait: number;
   restDays: number[]; // weekday indexes (0 = Sat)
   smartGround: boolean;
   acceptsGusMoney: boolean;
@@ -45,12 +47,13 @@ export const PROFILES: Record<Profile, ProfileDef> = {
     stolenPerHaul: 7,
     comboBonus: 0,
     rodDollars: 0,
+    rodBait: 0,
     restDays: [1],
     smartGround: false,
     acceptsGusMoney: true,
     useMarket: false,
     rosaFromWeek: 99,
-    dailySpend: 4,
+    dailySpend: 0,
     prepayAbove: null,
   },
   average: {
@@ -59,13 +62,14 @@ export const PROFILES: Record<Profile, ProfileDef> = {
     wrongBasket: 0.1,
     stolenPerHaul: 4,
     comboBonus: 0.05,
-    rodDollars: 10,
+    rodDollars: 14,
+    rodBait: 6,
     restDays: [1],
     smartGround: true,
     acceptsGusMoney: false,
     useMarket: false,
     rosaFromWeek: 99,
-    dailySpend: 10,
+    dailySpend: 2,
     prepayAbove: null,
   },
   great: {
@@ -74,13 +78,14 @@ export const PROFILES: Record<Profile, ProfileDef> = {
     wrongBasket: 0.04,
     stolenPerHaul: 2,
     comboBonus: 0.08,
-    rodDollars: 14,
+    rodDollars: 22,
+    rodBait: 9,
     restDays: [1],
     smartGround: true,
     acceptsGusMoney: false,
     useMarket: true,
     rosaFromWeek: 4,
-    dailySpend: 14,
+    dailySpend: 4,
     prepayAbove: 150,
   },
 };
@@ -155,7 +160,11 @@ function simulateMorning(s: GameState, p: ProfileDef, rng: Rng) {
     addTallyToHold(s, t);
     haul++;
   }
-  s.hold.fishValue += p.rodDollars * (0.6 + rng() * 0.8);
+  // rod: fish sold with the shrimp, bait bought at Hank's
+  if (p.rodDollars > 0) {
+    s.hold.bonus += p.rodDollars * (0.6 + rng() * 0.8);
+    spend(s, Math.min(s.money, p.rodBait));
+  }
   s.today.trips += 1;
   s.money -= TUNING.costs.fuel;
 }
@@ -165,6 +174,10 @@ export interface SimResult {
   repossessed: boolean;
   paidOffDay: number | null;
   shortFridays: number;
+  /** money left after each Friday payment */
+  fridayMoney: number[];
+  /** day of repossession, if any */
+  repossessedDay: number | null;
   log: string[];
 }
 
@@ -176,6 +189,8 @@ export function simulateSeason(profile: Profile, days = 63, seed = 12345): SimRe
   const log: string[] = [];
   let repossessed = false;
   let short = 0;
+  const fridayMoney: number[] = [];
+  let repossessedDay: number | null = null;
   for (let d = 1; d <= days; d++) {
     s.day = d;
     const wd = (d - 1) % 7;
@@ -193,6 +208,7 @@ export function simulateSeason(profile: Profile, days = 63, seed = 12345): SimRe
       log.push(`D${d} 연체 마감 ${r?.paid.toFixed(0)}/${r?.owed.toFixed(0)}`);
       if (r?.repossess) {
         repossessed = true;
+        repossessedDay = d;
         log.push(`D${d} 압류`);
         break;
       }
@@ -207,9 +223,11 @@ export function simulateSeason(profile: Profile, days = 63, seed = 12345): SimRe
       }
       const r = fridayPayment(s);
       if (r.short > 0) short++;
+      fridayMoney.push(s.money);
       log.push(`D${d} 상환 ${r.paid.toFixed(0)}/${r.due.toFixed(0)} · 잔액 $${s.money.toFixed(0)} · 빚 $${s.debt.toFixed(0)}${r.short > 0 ? ` (부족 ${r.short.toFixed(0)})` : ''}`);
       if (r.repossess) {
         repossessed = true;
+        repossessedDay = d;
         log.push(`D${d} 압류`);
         break;
       }
@@ -219,5 +237,5 @@ export function simulateSeason(profile: Profile, days = 63, seed = 12345): SimRe
   }
   const paidOffDay = typeof s.flags.debtPaidOffDay === 'number' ? (s.flags.debtPaidOffDay as number) : null;
   log.push(`결과: ${profile} · 압류 ${repossessed ? '예' : '아니오'} · 완납일 ${paidOffDay ?? '-'} · 총수입 $${s.totals.earned.toFixed(0)}`);
-  return { state: s, repossessed, paidOffDay, shortFridays: short, log };
+  return { state: s, repossessed, paidOffDay, shortFridays: short, fridayMoney, repossessedDay, log };
 }

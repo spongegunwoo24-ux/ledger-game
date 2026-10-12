@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { TUNING } from '../config/tuning';
 import { PALETTE, FONT_TITLE, FONT_HAND } from '../art/palette';
 import { music, sfx } from '../audio/sfx';
 import { dayLabel, isFriday, weekOf } from '../core/calendar';
@@ -33,6 +34,7 @@ export class SummaryScene extends Phaser.Scene {
       ['오늘 번 돈', `$${s.today.earned.toFixed(2)}`],
       ['오늘 잡은 새우', `${s.today.lbsCaught.toFixed(1)} lb`],
       ['장부가 훔친 새우', `${s.today.stolen}마리`],
+      ['오늘 밤 생활비 (먹을 것·전기·물)', `-$${Math.min(Math.max(0, s.money), TUNING.costs.living).toFixed(2)}`],
       ['가진 돈', `$${s.money.toFixed(2)}`],
       ['남은 빚', `$${s.debt.toFixed(0)}`],
     ];

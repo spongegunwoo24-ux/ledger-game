@@ -15,12 +15,12 @@ import { digitOf, isHeld, KEY, onKey } from '../core/keys';
 import { holdClock, releaseClock } from '../core/clock';
 import { BAITS, baitDef, type BaitId } from '../data/bait';
 import { GUS_TOW } from '../data/dialogue/gusDeck';
-import { fishPrice, type FishDef } from '../data/fish';
+import { type FishDef } from '../data/fish';
 import { groundDef } from '../data/grounds';
 import { CHAR_NAMES } from '../data/names';
-import { logFish } from '../systems/economy';
+import { addFishToHold, logFish } from '../systems/economy';
 import { FightModel, type Dir } from '../systems/fight';
-import { conditionsFor, haulGrade, rollHaul, snagChancePerMinute, towCurve, type NetFish } from '../systems/fishing';
+import { conditionsFor, haulGrade, rollHaul, snagChancePerMinute, storyCatchFor, towCurve, type NetFish } from '../systems/fishing';
 import type { SpawnContext } from '../systems/fishSpawn';
 import { Bubble } from '../ui/Bubble';
 import { Button, panel } from '../ui/Button';
@@ -475,6 +475,7 @@ export class TrawlScene extends Phaser.Scene {
       towIndex: this.trip.hauls,
       rng: this.rng,
       storyTaken: Object.keys(s.flags).filter((k) => k.startsWith('story_')).map((k) => k.slice(6)),
+      storyItems: storyCatchFor(s, this.trip.ground),
       netFish: this.netFish,
       hot: this.trip.hot,
     });
@@ -843,8 +844,7 @@ export class TrawlScene extends Phaser.Scene {
       if (f.def.rarity === 'legendary') {
         s.items[`legend_${f.def.id}`] = (s.items[`legend_${f.def.id}`] ?? 0) + 1;
       } else {
-        s.hold.fishCount += 1;
-        s.hold.fishValue = Math.round((s.hold.fishValue + fishPrice(f.def, f.inches)) * 100) / 100;
+        addFishToHold(s, f.def.id, f.inches);
       }
     } else if (choice === 'bait') {
       s.bait.pinfish = (s.bait.pinfish ?? 0) + 1;

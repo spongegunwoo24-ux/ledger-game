@@ -1,9 +1,18 @@
 import { TUNING } from '../config/tuning';
 import type { FeelId, GroundId, Segment } from './types';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export type FlagValue = boolean | number | string;
+
+/** [변경 2] one fish kept on ice */
+export interface HeldFish {
+  uid: number;
+  id: string;
+  inches: number;
+  /** day it was caught (a day on ice lowers the price) */
+  day: number;
+}
 
 export interface CatchHold {
   /** pounds */
@@ -12,9 +21,8 @@ export interface CatchHold {
   large: number;
   /** count */
   crabs: number;
-  /** [변경 1] fish on ice: count and total cannery value */
-  fishCount: number;
-  fishValue: number;
+  /** [변경 2] fish on ice, one entry per fish (sold one by one from the inventory) */
+  fish: HeldFish[];
   golden: number;
   /** combo + freshness bonus in dollars, paid with the sale */
   bonus: number;
@@ -154,7 +162,7 @@ export function newGame(seed = Math.floor(Math.random() * 1e9)): GameState {
     shortfalls: 0,
     overdue: null,
     payments: [],
-    hold: { small: 0, medium: 0, large: 0, crabs: 0, fishCount: 0, fishValue: 0, golden: 0, bonus: 0 },
+    hold: { small: 0, medium: 0, large: 0, crabs: 0, fish: [], golden: 0, bonus: 0 },
     flags: {},
     feelings: { ...FEELING_START },
     giftDay: {},
@@ -207,7 +215,7 @@ export function setFlag(s: GameState, key: string, value: FlagValue = true): voi
 }
 
 export function holdIsEmpty(h: CatchHold): boolean {
-  return h.small + h.medium + h.large + h.crabs + h.fishCount + h.golden <= 0;
+  return h.small + h.medium + h.large + h.crabs + h.fish.length + h.golden <= 0;
 }
 
 export function hasItem(s: GameState, id: string): boolean {

@@ -1,19 +1,48 @@
 import { describe, expect, it } from 'vitest';
 import { newGame } from '../src/core/state';
-import { dueNow, executeSale, fridayPayment, gusCanOffer, overdueDeadline, payDebt, quoteSale } from '../src/systems/economy';
+import { dueNow, executeSale, fridayPayment, gusCanOffer, heldFishPrice, overdueDeadline, payDebt, quoteSale } from '../src/systems/economy';
 
 describe('economy', () => {
-  it('cannery prices and market ×2', () => {
+  it('cannery prices and market ×1.5', () => {
     const s = newGame(1);
-    s.hold = { small: 10, medium: 10, large: 10, crabs: 4, fishCount: 0, fishValue: 0, golden: 0, bonus: 0 };
+    s.hold = { small: 10, medium: 10, large: 10, crabs: 4, fish: [], golden: 0, bonus: 0 };
     expect(quoteSale(s, 'cannery').total).toBeCloseTo(10 * 1 + 10 * 1.6 + 10 * 2.6 + 4 * 1.5);
-    expect(quoteSale(s, 'market').total).toBeCloseTo(2 * (10 + 16 + 26 + 6));
+    expect(quoteSale(s, 'market').total).toBeCloseTo(1.5 * (10 + 16 + 26 + 6));
+  });
+
+  it('[변경 2] sells only the ticked rows and fish; a day on ice lowers fish price', () => {
+    const s = newGame(1);
+    s.day = 5;
+    s.hold = {
+      small: 10,
+      medium: 0,
+      large: 0,
+      crabs: 2,
+      fish: [
+        { uid: 1, id: 'redfish', inches: 30, day: 5 },
+        { uid: 2, id: 'redfish', inches: 30, day: 4 },
+      ],
+      golden: 1,
+      bonus: 3,
+    };
+    const fresh = heldFishPrice(s, s.hold.fish[0]);
+    expect(heldFishPrice(s, s.hold.fish[1])).toBeCloseTo(fresh * 0.75);
+    const q = quoteSale(s, 'cannery', { crabs: false, golden: false, fish: [2] });
+    expect(q.crabs).toBe(0);
+    expect(q.fish).toEqual([2]);
+    expect(q.total).toBeCloseTo(10 * 1 + fresh * 0.75 + 3);
+    executeSale(s, q);
+    expect(s.hold.fish.map((f) => f.uid)).toEqual([1]);
+    expect(s.hold.crabs).toBe(2);
+    expect(s.hold.golden).toBe(1);
+    expect(s.hold.small).toBe(0);
+    expect(s.hold.bonus).toBe(0);
   });
 
   it('cannery oversupply after 450 lb in a week', () => {
     const s = newGame(1);
     s.week.canneryLbs = 440;
-    s.hold = { small: 20, medium: 0, large: 0, crabs: 0, fishCount: 0, fishValue: 0, golden: 0, bonus: 0 };
+    s.hold = { small: 20, medium: 0, large: 0, crabs: 0, fish: [], golden: 0, bonus: 0 };
     const q = quoteSale(s, 'cannery');
     expect(q.oversupplyLbs).toBe(10);
     expect(q.total).toBeCloseTo(10 * 1 + 10 * 0.8);
@@ -21,7 +50,7 @@ describe('economy', () => {
 
   it('Rosa takes at most 30 lb a day, largest first, no crabs', () => {
     const s = newGame(1);
-    s.hold = { small: 20, medium: 20, large: 20, crabs: 5, fishCount: 0, fishValue: 0, golden: 0, bonus: 0 };
+    s.hold = { small: 20, medium: 20, large: 20, crabs: 5, fish: [], golden: 0, bonus: 0 };
     const q = quoteSale(s, 'rosa');
     expect(q.lbs).toEqual({ small: 0, medium: 10, large: 20 });
     expect(q.crabs).toBe(0);

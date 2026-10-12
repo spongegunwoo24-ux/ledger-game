@@ -153,7 +153,7 @@ export class LocationScene extends Phaser.Scene {
     tasks.forEach((t, i) => {
       c.add(new Button(this, 1075, 264 + i * 72, t.label, t.fn, { w: 310, h: t.sub ? 62 : 52, size: 19, fill: t.fill, sub: t.sub }));
     });
-    c.add(new Button(this, 1075, 660, '나가기 (지도로)', () => this.leave(), { w: 300, h: 52, size: 20, fill: 0xfff3d6 }));
+    c.add(new Button(this, 1075, 660, '나가기 (마을로)', () => this.leave(), { w: 300, h: 52, size: 20, fill: 0xfff3d6 }));
     this.side = c;
   }
 

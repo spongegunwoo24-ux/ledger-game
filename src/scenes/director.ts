@@ -32,6 +32,8 @@ export interface CutsceneData {
   returnTo?: string;
   returnData?: object;
   location?: string;
+  /** [변경 2] play the current step of this quest (dawn harbor, morning market, evening home) */
+  questId?: string;
 }
 
 export function eventById(id: string): EventDef | undefined {

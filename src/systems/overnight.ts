@@ -16,6 +16,11 @@ export function applyOvernight(s: GameState): string[] {
   if (s.today.trips > 0) {
     s.deckWear += 1;
   }
+  // [변경 2] food, power and water
+  const living = Math.min(Math.max(0, s.money), TUNING.costs.living);
+  s.money = Math.round((s.money - living) * 100) / 100;
+  s.week.spent = Math.round((s.week.spent + living) * 100) / 100;
+  s.flags.livingPaid = living;
   s.day += 1;
   s.segment = 'dawn';
   s.time = TUNING.clock.wake;
