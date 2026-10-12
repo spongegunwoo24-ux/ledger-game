@@ -1,0 +1,100 @@
+import type { QuestDef } from './types';
+
+/** Q_BOTTLE — Maisie's dog Biscuit (weeks 1–2). */
+export const Q_BOTTLE: QuestDef = {
+  id: 'Q_BOTTLE',
+  title: '병 속 쪽지: 비스킷 찾기',
+  giver: 'maisie',
+  steps: [
+    {
+      task: '모래언덕에서 비스킷 찾기',
+      button: '모래언덕 뒤지기',
+      loc: 'dunes',
+      seg: 'afternoon',
+      bg: 'dunes',
+      actors: [{ who: 'eli', at: { x: 380, y: 548 } }],
+      scenes: [
+        [
+          { t: 'narrate', text: '모래언덕. 바람이 모래를 낮게 쓸고 지나간다.' },
+          { t: 'think', text: '갈색, 귀가 크고, 꼬리가 말린 개. 여기 어딘가.' },
+          { t: 'minigame', id: 'search', params: { title: '모래언덕 수색', hint: '수상한 곳을 눌러 살펴보자.', boathouse: true } },
+          { t: 'narrate', text: '언덕 너머 낡은 보트하우스. 바닥 판자 틈에서 낑낑대는 소리가 난다.' },
+          { t: 'think', text: '판자 밑으로 기어들어 갔다가 못 나오는 모양이다. 맨손으로는 판자가 안 들린다.' },
+          { t: 'think', text: '내일 지렛대가 될 만한 걸 들고 다시 오자. 물이랑 먹을 것도.' },
+          { t: 'narrate', text: '판자 틈으로 물 한 컵을 부어 주었다. 핥는 소리가 났다.' },
+        ],
+      ],
+    },
+    {
+      task: '보트하우스 판자 들어 올려 비스킷 꺼내기',
+      button: '판자 들어 올리기',
+      loc: 'dunes',
+      seg: 'afternoon',
+      nextDay: true,
+      bg: 'boathouse',
+      actors: [{ who: 'eli', at: { x: 400, y: 548 } }],
+      scenes: [
+        [
+          { t: 'narrate', text: '어제 그 보트하우스. 메리 루에서 쇠지렛대를 빌려 왔다.' },
+          { t: 'sfx', id: 'creak' },
+          { t: 'think', text: '하나, 둘…' },
+          { t: 'sfx', id: 'creak' },
+          { t: 'narrate', text: '판자가 들리자 모래투성이 갈색 덩어리가 튀어나와 내 다리에 매달렸다.' },
+          { t: 'enter', who: 'biscuit', at: { x: 560, y: 560 } },
+          { t: 'sfx', id: 'bark' },
+          { t: 'say', who: 'biscuit', text: '멍! 멍멍!' },
+          { t: 'think', text: '귀가 크다. 꼬리가 말려 있다. 비스킷 맞다.' },
+          { t: 'think', text: '…침 범벅이 됐다. 이 동네에서 나를 이렇게 반기는 건 너뿐이다.' },
+          { t: 'effect', effects: [{ item: 'biscuit', n: 1 }] },
+        ],
+      ],
+    },
+    {
+      task: '광장 옆 노란 집, 메이지에게 비스킷 데려다주기',
+      button: '비스킷 돌려주기',
+      loc: 'board',
+      seg: 'afternoon',
+      bg: 'board',
+      actors: [
+        { who: 'eli', at: { x: 380, y: 548 } },
+        { who: 'biscuit', at: { x: 470, y: 560 } },
+      ],
+      scenes: [
+        [
+          { t: 'narrate', text: '광장 게시판 옆, 노란 집. 문을 두드리기도 전에 문이 열렸다.' },
+          { t: 'enter', who: 'maisie', at: { x: 860, y: 548 }, face: -1 },
+          { t: 'say', who: 'maisie', text: '비스킷! 비스킷이다!' },
+          { t: 'sfx', id: 'bark' },
+          { t: 'move', who: 'biscuit', to: { x: 780, y: 560 }, ms: 500 },
+          { t: 'say', who: 'maisie', text: '아저씨가 내 병 주웠어요? 진짜로? 바다가 진짜로 배달해 줬어요?' },
+          { t: 'say', who: 'eli', text: '바다가 배달하고, 그물이 받았지. 나는 들고만 왔어.' },
+          { t: 'enter', who: 'joanne', at: { x: 980, y: 548 }, face: -1 },
+          { t: 'say', who: 'joanne', text: '메이지, 안으로…' },
+          { t: 'narrate', text: '엄마는 나를 알아봤다. 문고리를 잡은 손이 잠깐 하얘졌다.' },
+          { t: 'say', who: 'joanne', text: '…개를 찾아 주셨네요. 고맙습니다.' },
+          { t: 'say', who: 'maisie', text: '약속한 사탕! 다 드리는 거예요. 박하 맛은 빼고요.' },
+          { t: 'narrate', text: '메이지가 끈적한 사탕 한 줌을 내 손에 쥐여 주었다. 박하 맛만 들어 있었다.' },
+          {
+            t: 'choice',
+            options: [
+              { text: '"박하 맛 좋아해. 고마워."', effects: [{ feel: 'maisie', delta: 5 }] },
+              { text: '"사탕은 비스킷 간식 사 줘."', effects: [{ feel: 'joanne', delta: 5 }] },
+            ],
+          },
+          { t: 'say', who: 'maisie', text: '아저씨 이름 뭐예요? 나는 메이지예요. 여덟 살이고 부두에서 일하는 게 꿈이에요.' },
+          { t: 'say', who: 'eli', text: '일라이.' },
+          { t: 'say', who: 'maisie', text: '일라이 아저씨! 나중에 아저씨 배에서 일 시켜 주세요. 새우 나르는 거 잘해요!' },
+          { t: 'say', who: 'joanne', text: '메이지.' },
+          { t: 'narrate', text: '문이 닫혔다. 아까보다는 천천히.' },
+          { t: 'effect', effects: [{ item: 'biscuit', n: -1 }] },
+        ],
+      ],
+    },
+  ],
+  complete: [
+    { feel: 'maisie', delta: 40 },
+    { feel: 'joanne', delta: 20 },
+    { feel: 'kids', delta: 5 },
+    { flag: 'maisieHireable' },
+  ],
+};

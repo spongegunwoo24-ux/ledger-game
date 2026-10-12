@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>장부 (Ledger)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Jua&family=Nanum+Pen+Script&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #2a2f4a;
+        overflow: hidden;
+        font-family: 'Gowun Dodum', 'Noto Sans KR', sans-serif;
+      }
+      #game {
+        width: 100vw;
+        height: 100vh;
+      }
+      #boot-msg {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: #f5e3b3;
+        font-size: 20px;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="boot-msg">펠리컨 코브로 가는 중…</div>
+    <div id="game"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

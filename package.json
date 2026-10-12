@@ -1,0 +1,28 @@
+{
+  "name": "ledger-game",
+  "version": "1.0.0",
+  "description": "「장부 (Ledger)」 — 펠리컨 코브의 새우잡이 한 철",
+  "scripts": {
+    "dev": "node scripts/glyphs.mjs && vite",
+    "build": "node scripts/glyphs.mjs && tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "check": "tsc --noEmit && eslint . && vitest run",
+    "glyphs": "node scripts/glyphs.mjs"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
+  },
+  "private": true,
+  "type": "module"
+}
