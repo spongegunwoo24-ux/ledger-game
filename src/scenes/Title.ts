@@ -28,8 +28,8 @@ export class TitleScene extends Phaser.Scene {
     addSprite(this, 1150, 390, 'sc_lighthouse', 0.9);
     const boat = addSprite(this, 420, 470, 'boat_marylou', 0.9).setOrigin(0.5, 200 / 240);
     this.tweens.add({ targets: boat, y: 476, angle: 1, duration: 1800, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
-    const pel = addSprite(this, 560, 250, 'ch_ledger_fly', 1.1);
-    this.tweens.add({ targets: pel, x: 640, y: 230, duration: 3000, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    const pel = addSprite(this, 760, 330, 'ch_ledger_fly', 1.1);
+    this.tweens.add({ targets: pel, x: 840, y: 310, duration: 3000, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     for (let i = 0; i < 3; i++) {
       const gull = addSprite(this, 200 + i * 340, 120 + i * 30, 'sc_gull', 0.9);
       this.tweens.add({ targets: gull, x: gull.x + 80, duration: 4000 + i * 600, yoyo: true, repeat: -1 });
