@@ -255,7 +255,7 @@ export const LOGBOOK_ENTRIES: Record<string, LogbookEntry> = {
 /** True when an auto entry's conditions hold right now. */
 function unlocked(s: GameState, e: LogbookEntry): boolean {
   if (!e.unlock && !e.caught) return false;
-  if (e.caught && !(s.fishLog?.[e.caught]?.count > 0)) return false;
+  if (e.caught && !((s.fishLog[e.caught]?.count ?? 0) > 0)) return false;
   return check(s, e.unlock);
 }
 

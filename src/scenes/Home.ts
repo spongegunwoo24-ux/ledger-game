@@ -9,7 +9,7 @@ import { dueNow } from '../systems/economy';
 import { curiosityDef } from '../data/catch';
 import { STATEMENTS } from '../data/caseWall';
 import { letterDef } from '../data/letters';
-import { GROUND_TIPS, LOGBOOK_ENTRIES } from '../data/logbook';
+import { GROUND_TIPS, LOGBOOK_ENTRIES, logbookPages, syncLogbook } from '../data/logbook';
 import { GROUND_NAMES } from '../data/groundNames';
 import { burnLetter, canOpenLetterTonight, letterLook, lettersAllowedTonight, nextLetterNumber, readLetter } from '../systems/letters';
 import { questButtons } from '../ui/questButtons';
@@ -179,41 +179,76 @@ export class HomeScene extends Phaser.Scene {
 
   private logbook() {
     const s = G.state;
+    const fresh = syncLogbook(s);
     const c = this.overlay('메리 루 호 항해 일지');
-    let y = 130;
-    for (const id of s.logbook) {
+    // pages: entries flow down and continue on the next page (◀ ▶)
+    const TOP = 130;
+    const BOTTOM = 600;
+    const pages: Phaser.GameObjects.Container[] = [];
+    let y = TOP;
+    let page!: Phaser.GameObjects.Container;
+    const newPage = () => {
+      page = this.add.container(0, 0);
+      c.add(page);
+      pages.push(page);
+      y = TOP;
+    };
+    newPage();
+    const put = (t: Phaser.GameObjects.Text, gap: number): number => {
+      if (y > TOP && y + t.height > BOTTOM) newPage();
+      t.setY(y);
+      page.add(t);
+      const top = y;
+      y += t.height + gap;
+      return top;
+    };
+    for (const id of logbookPages(s)) {
       const e = LOGBOOK_ENTRIES[id];
-      if (!e) continue;
-      const struck = s.logbookStruck.includes(id);
-      const t = txt(this, 170, y, e.text, {
+      const t = txt(this, 170, 0, e.text, {
         size: 26,
         fontFamily: FONT_HAND,
         color: e.hand === 'walt' ? '#3a3a3a' : '#2d5fa8',
         wordWrap: { width: 920 },
       });
-      c.add(t);
-      if (struck) {
+      const top = put(t, 10);
+      if (s.logbookStruck.includes(id)) {
         const g = this.add.graphics();
-        g.lineStyle(2.4, 0x2d5fa8, 1).lineBetween(166, y + 16, 170 + t.width + 4, y + 14);
-        c.add(g);
+        g.lineStyle(2.4, 0x2d5fa8, 1).lineBetween(166, top + 16, 170 + t.width + 4, top + 14);
+        page.add(g);
       }
-      y += t.height + 10;
     }
     if (s.tips.length) {
       y += 8;
-      c.add(txt(this, 170, y, '— 어장 메모 —', { size: 18, color: '#6b6385' }));
-      y += 30;
+      put(txt(this, 170, 0, '— 어장 메모 —', { size: 18, color: '#6b6385' }), 12);
       for (const tip of s.tips) {
-        const tt = txt(this, 170, y, `${GROUND_NAMES[tip]}: ${GROUND_TIPS[tip as Exclude<GroundId, 'theSpot'>]}`, {
+        const tt = txt(this, 170, 0, `${GROUND_NAMES[tip]}: ${GROUND_TIPS[tip as Exclude<GroundId, 'theSpot'>]}`, {
           size: 24,
           fontFamily: FONT_HAND,
           color: '#3a3a3a',
           wordWrap: { width: 920 },
         });
-        c.add(tt);
-        y += tt.height + 6;
+        put(tt, 6);
       }
     }
+    if (pages.length > 1) {
+      let cur = 0;
+      const label = txt(this, 640, 618, '', { size: 17, color: '#6b6385' }).setOrigin(0.5);
+      const show = () => {
+        pages.forEach((p, i) => p.setVisible(i === cur));
+        label.setText(`${cur + 1} / ${pages.length}`);
+      };
+      const prev = new Button(this, 540, 618, '◀', () => {
+        cur = Math.max(0, cur - 1);
+        show();
+      }, { w: 56, h: 34, size: 18, fill: 0xfff3d6 });
+      const next = new Button(this, 740, 618, '▶', () => {
+        cur = Math.min(pages.length - 1, cur + 1);
+        show();
+      }, { w: 56, h: 34, size: 18, fill: 0xfff3d6 });
+      c.add([label, prev, next]);
+      show();
+    }
+    if (fresh.length) this.toasts.show(`일지를 더 읽었다 · 새로 ${fresh.length}쪽`, PALETTE.lilac);
   }
 
   private shelf() {
