@@ -62,7 +62,7 @@ export function orderLabel(o: Order): string {
 export function orderValue(s: GameState, o: Order): number | null {
   const w = o.want;
   const p = TUNING.prices;
-  let base = 0;
+  let base: number;
   if (w.kind === 'shrimp') {
     if (s.hold[w.size] + 0.001 < w.lbs) return null;
     base = w.lbs * p[w.size];

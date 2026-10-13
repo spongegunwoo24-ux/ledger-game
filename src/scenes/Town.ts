@@ -23,7 +23,7 @@ import { addHeadMark, headMarkFor } from '../ui/headIcon';
 import { Hud } from '../ui/Hud';
 import { getSettings } from '../ui/settings';
 import { txt } from '../ui/text';
-import { checkAfternoonClock, endSegment } from './director';
+import { checkAfternoonClock, endSegment, timedAfternoonEvent } from './director';
 import { BAY, coastline, coastY, CREEK, doorOf, findPath, ROADS, SPOTS, spotOf, walkable, WORLD, type TownSpot } from './town/townMap';
 import { SHORES, type ShoreId } from '../data/shore';
 
@@ -759,7 +759,17 @@ export class TownScene extends Phaser.Scene {
     if (!blocked) {
       this.pickFinds();
       this.scareGulls();
+      const before = s.time;
       tickClock(s, delta, 'land');
+      if (before < 720 && s.time >= 720) {
+        // Father Matthew rings the bell at noon
+        sfx('bell');
+        this.toasts.show('정오. 성당 종이 울린다.', PALETTE.lilac);
+      }
+      if (s.time >= TUNING.clock.dusk && !timedAfternoonEvent()) {
+        this.autoHome();
+        return;
+      }
       if (checkAfternoonClock(this, 'Town')) {
         this.leaving = true;
         return;
@@ -970,6 +980,34 @@ export class TownScene extends Phaser.Scene {
     sfx('step');
     this.cameras.main.fadeOut(250, 21, 18, 31);
     this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Location', { loc }));
+  }
+
+  /** 19:00: Eli heads home on his own (no penalty) */
+  private autoHome() {
+    if (this.leaving) return;
+    this.leaving = true;
+    this.toasts.show('19시. 집으로 간다.', PALETTE.lilac);
+    const home = doorOf(spotOf('home')!);
+    const path = findPath(this.pos, home);
+    const pts = path.length ? path : [home];
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 1600,
+      onUpdate: (tw) => {
+        const t = tw.getValue() ?? 0;
+        const i = Math.min(pts.length - 1, Math.floor(t * pts.length));
+        const p = pts[i];
+        this.pos.x += (p.x - this.pos.x) * 0.12;
+        this.pos.y += (p.y - this.pos.y) * 0.12;
+        this.updateView();
+      },
+    });
+    this.time.delayedCall(1300, () => {
+      currentLoc = 'home';
+      this.cameras.main.fadeOut(500, 21, 18, 31);
+      this.cameras.main.once('camerafadeoutcomplete', () => endSegment(this));
+    });
   }
 
   private finish() {
