@@ -949,11 +949,11 @@ Work in this order. Do not start a milestone until the previous one passes its c
 - [ ] Self-check: a 30-second trawl + sort + sell feels satisfying (juicy feedback: splash, plop, cash bell, particles, screen-shake-free gentle motion).
 
 ### M2 — Town and people
-- [ ] `[변경 1]` Walkable afternoon town with walking NPCs, land fishing spots, bicycle/truck (5.2). Harbor board orders and ranking, encyclopedia and radio forecast (8.17 4–5). Mounting at Mabel's. Letters L13–L36 to the new rules.
-- [ ] Town map nodes, location scenes, schedules, feelings with visible state icons, dialogue system with variants.
-- [ ] Notebook with rules from 8.8. Quests Q_BOTTLE through Q_BLESSING.
-- [ ] Letters system with burn choice; letters L01–L36 fully written (8.9 rules). Logbook.
-- [ ] Weeks 2–5 events, including the festival with both outcomes.
+- [x] `[변경 1]` Walkable afternoon town with walking NPCs, land fishing spots, bicycle/truck (5.2). Harbor board orders and ranking, encyclopedia and radio forecast (8.17 4–5). Mounting at Mabel's. Letters L13–L36 to the new rules.
+- [x] Town map nodes, location scenes, schedules, feelings with visible state icons, dialogue system with variants.
+- [x] Notebook with rules from 8.8. Quests Q_BOTTLE through Q_BLESSING.
+- [x] Letters system with burn choice; letters L01–L36 fully written (8.9 rules). Logbook.
+- [x] Weeks 2–5 events, including the festival with both outcomes.
 
 ### M3 — Economy and spending
 - [ ] All shop items (8.5) working with effects. House and boat decoration persists.
