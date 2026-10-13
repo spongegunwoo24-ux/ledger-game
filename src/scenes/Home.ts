@@ -84,7 +84,7 @@ export class HomeScene extends Phaser.Scene {
       addSprite(this, 1150, 120, 'prop_logbook', 0.7).setDepth(46);
       hot(1110, 70, 80, 80, '아버지의 항해 일지', () => this.logbook());
     }
-    hot(900, 90, 280, 180, '선반', () => this.shelf());
+    hot(900, 90, 200, 180, '선반', () => this.shelf());
     // [변경 2] fish mounted at Mabel's
     s.mounted.slice(0, 3).forEach((m, i) => {
       const x = 110 + i * 130;

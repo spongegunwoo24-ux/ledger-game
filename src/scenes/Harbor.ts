@@ -169,6 +169,7 @@ export class HarborScene extends Phaser.Scene {
     if (s.flags.hankAskPending && !s.flags.hankAsked) {
       delete s.flags.hankAskPending;
       s.flags.hankAsked = true;
+      s.flags.hankFirstWords = true;
       s.feelings.hank = Math.min(100, s.feelings.hank + 10);
       s.feelings.fishermen = Math.min(100, s.feelings.fishermen + 5);
       this.time.delayedCall(900, () => new Bubble(this, 720).say(125, 380, '행크: …어디서 잡았냐?', 4200));
