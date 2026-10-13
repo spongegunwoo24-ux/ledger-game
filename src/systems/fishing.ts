@@ -1,3 +1,4 @@
+import { check } from '../core/conditions';
 import { SNAG_PER_MINUTE, TUNING } from '../config/tuning';
 import { moonOf, tideOf, weatherOf } from '../core/calendar';
 import { hash32, makeRng, pick, range, type Rng } from '../core/rng';
@@ -51,6 +52,8 @@ export interface HaulOptions {
   rng: Rng;
   /** story item ids already obtained (never duplicated) */
   storyTaken: string[];
+  /** [변경 2] story items to put in this tow (from storyCatchFor) */
+  storyItems?: string[];
   /** fish that actually swam into the net (sea scene); generated from the spawn table when omitted */
   netFish?: NetFish[];
   /** Ledger's dive marked this ground */
@@ -68,6 +71,13 @@ function pickSize(rng: Rng, mix: { small: number; medium: number; large: number 
 }
 
 /** Builds the deck items for one haul. */
+/** [변경 2] condition-based story items (quest finds) that belong in a tow on this ground */
+export function storyCatchFor(s: GameState, ground: GroundId): string[] {
+  return STORY_CATCH.filter(
+    (sc) => sc.day === undefined && sc.requires !== undefined && (!sc.ground || sc.ground === ground) && s.flags[`story_${sc.id}`] !== 'kept' && check(s, sc.requires),
+  ).map((sc) => sc.id);
+}
+
 export function rollHaul(o: HaulOptions): CatchItem[] {
   const g = groundDef(o.ground);
   const rng = o.rng;
@@ -116,9 +126,10 @@ export function rollHaul(o: HaulOptions): CatchItem[] {
 
   if (o.towIndex === 0) {
     for (const sc of STORY_CATCH) {
-      if (sc.day === o.day && !o.storyTaken.includes(sc.id)) items.push({ uid: nextUid(), kind: 'story', id: sc.id });
+      if (sc.day !== undefined && sc.day === o.day && !o.storyTaken.includes(sc.id)) items.push({ uid: nextUid(), kind: 'story', id: sc.id });
     }
   }
+  for (const id of o.storyItems ?? []) if (!items.some((i) => i.kind === 'story' && i.id === id)) items.push({ uid: nextUid(), kind: 'story', id });
 
   // Keep the deck readable and fast: trim shrimp first if over the cap.
   while (items.length > TUNING.trawl.maxItemsPerTow) {

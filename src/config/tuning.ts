@@ -40,16 +40,22 @@ export const TUNING = {
     large: 2.6,
     crab: 1.5,
     goldenShrimp: 30,
-    marketMultiplier: 2,
-    rosaMultiplier: 2,
+    marketMultiplier: 1.5,
+    rosaMultiplier: 1.6,
     rosaMaxLbsPerDay: 30,
     canneryOversupplyLbs: 450,
     canneryOversupplyMult: 0.8,
+    /** [변경 2] each day a fish spends on ice takes this share off its price, down to the floor */
+    stalePerDay: 0.25,
+    staleFloor: 0.5,
   },
 
   costs: {
-    fuel: 5,
+    /** [변경 2] diesel for one trip out (was $5) */
+    fuel: 12,
     netRepair: 40,
+    /** [변경 2] food, power and water, paid every night */
+    living: 8,
   },
 
   gusCan: {
@@ -73,7 +79,7 @@ export const TUNING = {
     goodWinchHaulMult: 1.8,
     // max items that can appear on deck from one tow (performance + sorting time)
     maxItemsPerTow: 70,
-    lbsPerShrimpItem: 0.29,
+    lbsPerShrimpItem: 0.25,
   },
 
   sorting: {
@@ -110,13 +116,14 @@ export const TUNING = {
     fight: { rare: 3, veryRare: 4, legendary: 9 },
   },
 
+  /** [변경 2] lowered (was +1% per step, max 25%, fresh +8% / +4%) */
   combo: {
-    perStep: 0.01,
-    max: 0.25,
+    perStep: 0.006,
+    max: 0.15,
     fresh1Sec: 20,
-    fresh1: 0.08,
+    fresh1: 0.05,
     fresh2Sec: 40,
-    fresh2: 0.04,
+    fresh2: 0.02,
   },
 
   letters: {

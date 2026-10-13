@@ -5,7 +5,8 @@ import type { Step } from '../core/events';
 import { G } from '../core/game';
 import { initView } from '../core/view';
 import { fridayPayment, gusCanOffer, dueNow, overdueDeadline } from '../systems/economy';
-import { makeRunCtx, runSteps, type RunCtx } from '../ui/runner';
+import { makeRunCtx, runSteps, toastAll, type RunCtx } from '../ui/runner';
+import { currentStep, performStep, stepScene } from '../systems/quests';
 import { Stage } from '../ui/Stage';
 import { endSegment, enterSegment, eventById, type CutsceneData } from './director';
 
@@ -38,6 +39,16 @@ export class CutsceneScene extends Phaser.Scene {
       if (await this.payment()) return;
     } else if (d.special === 'deadline') {
       if (await this.deadline()) return;
+    } else if (d.questId) {
+      const st = currentStep(s, d.questId);
+      if (st) {
+        this.stage.setBackdrop(st.bg ?? 'dock', s.segment);
+        for (const a of st.actors ?? []) this.stage.place(a.who, a.at, a.face ?? 1);
+        ambientWaves(st.bg === 'dock' || st.bg === 'sea' || st.bg === 'dockDusk', 0.04);
+        await runSteps(this.ctx, stepScene(s, d.questId));
+        toastAll(this.ctx, performStep(s, d.questId));
+        await new Promise<void>((r) => this.time.delayedCall(900, () => r()));
+      }
     } else if (d.eventId) {
       const ev = eventById(d.eventId);
       if (ev) {

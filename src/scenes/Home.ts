@@ -12,6 +12,7 @@ import { letterDef } from '../data/letters';
 import { GROUND_TIPS, LOGBOOK_ENTRIES } from '../data/logbook';
 import { GROUND_NAMES } from '../data/groundNames';
 import { burnLetter, canOpenLetterTonight, letterLook, lettersAllowedTonight, nextLetterNumber, readLetter } from '../systems/letters';
+import { questButtons } from '../ui/questButtons';
 import { Button, panel } from '../ui/Button';
 import { choose, DialogueBox, Toasts } from '../ui/Dialogue';
 import { Hud } from '../ui/Hud';
@@ -83,6 +84,7 @@ export class HomeScene extends Phaser.Scene {
     }
     hot(900, 90, 280, 180, '선반', () => this.shelf());
 
+    questButtons(this, 'home', 'evening', 1120, 580, 'Home', () => !this.busy);
     new Button(this, 1120, 660, '잠자리에 든다', () => this.sleep(), { w: 240, h: 56, fill: PALETTE.lilac, sub: '하루를 마치고 자동 저장' }).setDepth(700);
     if (s.flags.letterBoxFound) {
       const left = lettersAllowedTonight(s) - s.lettersToday;

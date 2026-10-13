@@ -9,7 +9,10 @@ import { pick, makeRng, hash32 } from '../core/rng';
 import { holdIsEmpty } from '../core/state';
 import { initView } from '../core/view';
 import { CHAR_NAMES } from '../data/names';
-import { executeSale, quoteSale, type Seller } from '../systems/economy';
+import { executeSale, quoteSale, type SaleSelection, type Seller } from '../systems/economy';
+import { TUNING } from '../config/tuning';
+import { openInventory } from '../ui/Inventory';
+import { questButtons } from '../ui/questButtons';
 import { feel } from '../systems/feelings';
 import { Bubble } from '../ui/Bubble';
 import { Button, panel } from '../ui/Button';
@@ -28,7 +31,7 @@ const DEWEY_LINES = [
   '이 정도면 트럭이 웃겠어.',
 ];
 
-/** Morning: sell the catch. Cannery truck (base), fish market (×2, gated), Rosa (×2, max 30 lb, Rosa ≥ 60). */
+/** Morning: sell the catch from the inventory. Cannery truck (base), fish market (×1.5, gated), Rosa (×1.6, shrimp only, max 30 lb, Rosa ≥ 60). */
 export class MarketScene extends Phaser.Scene {
   private hud!: Hud;
   private toasts!: Toasts;
@@ -86,74 +89,100 @@ export class MarketScene extends Phaser.Scene {
     return { ok: false, why: '"살인마 새우는 안 받아."' };
   }
 
+  /** [변경 2] shrimp, crabs and golden shrimp are sold together; fish are picked from the bag */
   private buildPanel() {
     this.panelC?.destroy();
     const s = G.state;
     const c = this.add.container(0, 0).setDepth(100);
     const g = this.add.graphics();
-    panel(g, 40, 100, 470, 470, 0xfffaf0, 20);
+    panel(g, 40, 100, 500, 560, 0xfffaf0, 20);
     c.add(g);
-    c.add(txt(this, 275, 132, '오늘 팔 것', { size: 28, fontFamily: FONT_TITLE }).setOrigin(0.5));
+    c.add(txt(this, 290, 132, '오늘 팔 것', { size: 28, fontFamily: FONT_TITLE }).setOrigin(0.5));
     const h = s.hold;
     const rows: [string, string][] = [
       ['새우 소', `${h.small.toFixed(1)} lb`],
       ['새우 중', `${h.medium.toFixed(1)} lb`],
       ['새우 대', `${h.large.toFixed(1)} lb`],
       ['게', `${h.crabs}마리`],
-      ['생선', `${h.fishCount}마리 ($${h.fishValue.toFixed(0)})`],
     ];
     if (h.golden) rows.push(['황금 새우', `${h.golden}마리`]);
     if (h.bonus > 0) rows.push(['콤보·신선도 보너스', `+$${h.bonus.toFixed(2)}`]);
     rows.forEach(([a, b], i) => {
-      c.add(txt(this, 80, 166 + i * 30, a, { size: 19 }));
-      c.add(txt(this, 470, 166 + i * 30, b, { size: 19, color: '#2d5fa8' }).setOrigin(1, 0));
+      c.add(txt(this, 80, 168 + i * 30, a, { size: 19 }));
+      c.add(txt(this, 500, 168 + i * 30, b, { size: 19, color: '#2d5fa8' }).setOrigin(1, 0));
     });
-    const empty = holdIsEmpty(h);
-    const cannery = quoteSale(s, 'cannery');
-    const market = quoteSale(s, 'market');
-    const rosa = quoteSale(s, 'rosa');
+    const shrimpOnly = { fish: [] as number[] };
+    const cannery = quoteSale(s, 'cannery', shrimpOnly);
+    const market = quoteSale(s, 'market', shrimpOnly);
+    const rosa = quoteSale(s, 'rosa', shrimpOnly);
     const mk = this.marketOpen();
-    const rosaOk = feel(s, 'rosa') >= 60 && rosa.total > 0;
-    let y = 166 + rows.length * 30 + 34;
-    const b1 = new Button(this, 275, y, `듀이 트럭에 팔기  $${cannery.total.toFixed(2)}`, () => this.sell('cannery'), {
-      w: 400,
-      h: 54,
-      size: 20,
-      fill: PALETTE.butter,
-      disabled: empty,
-      sub: cannery.oversupplyLbs > 0 ? '이번 주 너무 많이 팔아서 값이 조금 내렸다' : undefined,
-    });
-    c.add(b1);
-    y += 66;
-    const b2 = new Button(this, 275, y, mk.ok ? `어시장에 팔기  $${market.total.toFixed(2)}` : `어시장  ${mk.why}`, () => this.sell('market'), {
-      w: 400,
-      h: 54,
-      size: 20,
-      fill: PALETTE.mint,
-      disabled: empty || !mk.ok,
-    });
-    c.add(b2);
-    y += 66;
+    let y = 168 + rows.length * 30 + 30;
+    c.add(
+      new Button(this, 290, y, `새우·게 듀이 트럭에  $${cannery.total.toFixed(2)}`, () => this.sell('cannery'), {
+        w: 430,
+        h: 50,
+        size: 19,
+        fill: PALETTE.butter,
+        disabled: cannery.total <= 0,
+        sub: cannery.oversupplyLbs > 0 ? '이번 주 너무 많이 팔아서 값이 조금 내렸다' : undefined,
+      }),
+    );
+    y += 60;
+    c.add(
+      new Button(this, 290, y, mk.ok ? `새우·게 어시장에 (×${TUNING.prices.marketMultiplier})  $${market.total.toFixed(2)}` : `어시장  ${mk.why}`, () => this.sell('market'), {
+        w: 430,
+        h: 50,
+        size: 19,
+        fill: PALETTE.mint,
+        disabled: !mk.ok || market.total <= 0,
+      }),
+    );
+    y += 60;
     if (feel(s, 'rosa') >= 60) {
-      const b3 = new Button(this, 275, y, `로사 식당 납품  $${rosa.total.toFixed(2)}`, () => this.sell('rosa'), {
-        w: 400,
+      c.add(
+        new Button(this, 290, y, `새우 로사 식당에  $${rosa.total.toFixed(2)}`, () => this.sell('rosa'), {
+          w: 430,
+          h: 50,
+          size: 19,
+          fill: PALETTE.peach,
+          disabled: rosa.total <= 0,
+          sub: '하루 30 lb까지, 게는 안 받음',
+        }),
+      );
+      y += 60;
+    }
+    // fish: the bag
+    const fishN = h.fish.length;
+    c.add(
+      new Button(this, 290, Math.max(y + 10, 600), fishN ? `물고기 팔기 · 가방 열기 (${fishN}마리)` : '물고기 없음', () => this.openBag(), {
+        w: 430,
         h: 54,
         size: 20,
-        fill: PALETTE.peach,
-        disabled: empty || !rosaOk,
-        sub: '하루 30 lb까지, 게는 안 받음',
-      });
-      c.add(b3);
-    }
-    const next = new Button(this, 1100, 640, empty ? '오후로 →' : '안 팔고 오후로 →', () => this.leave(), { w: 240, h: 54, fill: empty ? PALETTE.coral : 0xfff3d6 });
+        fill: 0xdbe8ff,
+        disabled: !fishN,
+      }),
+    );
+    const empty = holdIsEmpty(h);
+    for (const b of questButtons(this, 'dock', 'morning', 1100, 540, 'Market')) c.add(b);
+    const next = new Button(this, 1100, 640, empty ? '오후로 →' : '남은 건 두고 오후로 →', () => this.leave(), { w: 260, h: 54, size: 19, fill: empty ? PALETTE.coral : 0xfff3d6 });
     c.add(next);
-    if (!empty) c.add(txt(this, 1100, 600, '안 판 새우는 내일까지 얼음에 둔다', { size: 14, color: '#FFFAF0' }).setOrigin(0.5));
+    if (!empty) c.add(txt(this, 1100, 600, '안 판 건 얼음에 둔다. 생선은 하루마다 값이 떨어진다.', { size: 14, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 3 }).setOrigin(0.5));
     this.panelC = c;
   }
 
-  private sell(seller: Seller) {
+  private openBag() {
     const s = G.state;
-    const q = quoteSale(s, seller);
+    const to: Seller = this.marketOpen().ok ? 'market' : 'cannery';
+    openInventory(this, s, {
+      sellTo: to,
+      sellLabel: to === 'market' ? `어시장에 판다 (×${TUNING.prices.marketMultiplier})` : '듀이 트럭에 판다',
+      onSell: (uids) => this.sell(to, { small: false, medium: false, large: false, crabs: false, golden: false, fish: uids }),
+    });
+  }
+
+  private sell(seller: Seller, sel: SaleSelection = { fish: [] }) {
+    const s = G.state;
+    const q = quoteSale(s, seller, sel);
     if (q.total <= 0) return;
     const got = executeSale(s, q);
     // fuel bought on credit is paid back from the first sale

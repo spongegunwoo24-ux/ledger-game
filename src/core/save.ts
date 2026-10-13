@@ -23,6 +23,7 @@ export function deserialize(raw: string): GameState {
   const merged: GameState = { ...base, ...data } as GameState;
   merged.feelings = { ...base.feelings, ...(data.feelings ?? {}) };
   merged.hold = { ...base.hold, ...(data.hold ?? {}) };
+  if (!Array.isArray(merged.hold.fish)) merged.hold.fish = [];
   merged.today = { ...base.today, ...(data.today ?? {}) };
   merged.week = { ...base.week, ...(data.week ?? {}) };
   merged.totals = { ...base.totals, ...(data.totals ?? {}) };

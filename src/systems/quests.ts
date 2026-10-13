@@ -90,6 +90,13 @@ export function stepScene(s: GameState, id: string) {
   return st.scenes[Math.min(q.progress, st.scenes.length - 1)];
 }
 
+/** [변경 2] quest steps that can be done right now at this place and part of the day */
+export function stepsHere(s: GameState, loc: LocId, seg: Segment): { qid: string; step: QuestStepDef }[] {
+  return activeQuestIds(s)
+    .filter((qid) => stepAvailableNow(s, qid, loc, seg))
+    .map((qid) => ({ qid, step: currentStep(s, qid)! }));
+}
+
 export function activeQuestIds(s: GameState): string[] {
   return Object.keys(s.quests).filter((k) => s.quests[k].state === 'active');
 }
