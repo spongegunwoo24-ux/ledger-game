@@ -1,12 +1,11 @@
 import Phaser from 'phaser';
 import { PALETTE, FONT_TITLE } from '../art/palette';
 import { ambientWaves, music, sfx } from '../audio/sfx';
-import { check } from '../core/conditions';
 import { G } from '../core/game';
 import { hash32, makeRng, pick } from '../core/rng';
 import type { CharId, LocId } from '../core/types';
 import { initView } from '../core/view';
-import { SMALLTALK } from '../data/dialogue/smalltalk';
+import { talkLinesFor } from '../data/dialogue/smalltalk';
 import { locationDef } from '../data/locations';
 import { peopleAt } from '../data/schedules';
 import { dueNow, payDebt, spend } from '../systems/economy';
@@ -108,7 +107,7 @@ export class LocationScene extends Phaser.Scene {
   private talk(who: CharId) {
     if (this.busy) return;
     const s = G.state;
-    const lines = (SMALLTALK[who] ?? []).filter((l) => check(s, l.when));
+    const lines = talkLinesFor(s, who);
     if (!lines.length) return;
     const rng = makeRng(hash32(s.seed, 'talk', s.day, who, Number(s.flags[`talk_${who}`]) || 0));
     s.flags[`talk_${who}`] = (Number(s.flags[`talk_${who}`]) || 0) + 1;
