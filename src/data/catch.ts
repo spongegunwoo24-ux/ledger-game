@@ -79,6 +79,21 @@ export const STORY_CATCH: StoryCatchDef[] = [
     day: 50,
     rescueLine: '…',
   },
+  // Q_HANK_TRAPS: Hank's two lost crab traps, from the moment Eli has lined up Hank's landmarks
+  {
+    id: 's_hank_trap_river',
+    name: '행크의 통발 ("H.")',
+    requires: [{ quest: 'Q_HANK_TRAPS', state: 'active' }, { questStepGte: 'Q_HANK_TRAPS', step: 1 }],
+    ground: 'river',
+    rescueLine: '…행크 통발이다. 버리면 또 끌어올려야 돼.',
+  },
+  {
+    id: 's_hank_trap_oyster',
+    name: '굴 붙은 행크의 통발 ("H.")',
+    requires: [{ quest: 'Q_HANK_TRAPS', state: 'active' }, { questStepGte: 'Q_HANK_TRAPS', step: 1 }],
+    ground: 'oyster',
+    rescueLine: '…그것도 행크 거다. 챙겨 둬.',
+  },
 ];
 
 export const SIZE_LABEL: Record<ShrimpSize, string> = { small: '소', medium: '중', large: '대' };
