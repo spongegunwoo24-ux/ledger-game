@@ -41,7 +41,7 @@ export function eventById(id: string): EventDef | undefined {
 }
 
 function go(from: Phaser.Scene, key: string, data?: object) {
-  from.scene.start(key, data);
+  from.scene.start(key, data ?? {});
 }
 
 /** Enter the current segment: play pending start events, then the segment's main scene. */

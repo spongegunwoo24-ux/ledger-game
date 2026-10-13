@@ -120,6 +120,27 @@ function inPoly(x: number, y: number, poly: [number, number][]): boolean {
   return inside;
 }
 
+/** [변경 2] the creek on the west side (riverbank fishing spot) */
+export const CREEK: [number, number][] = [
+  [0, 600],
+  [120, 680],
+  [165, 800],
+  [130, 1000],
+  [95, 1300],
+];
+
+function distToPolyline(x: number, y: number, pts: [number, number][]): number {
+  let best = Infinity;
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1];
+    const [x1, y1] = pts[i];
+    const len2 = (x1 - x0) ** 2 + (y1 - y0) ** 2;
+    const t = Math.max(0, Math.min(1, ((x - x0) * (x1 - x0) + (y - y0) * (y1 - y0)) / len2));
+    best = Math.min(best, Math.hypot(x - (x0 + t * (x1 - x0)), y - (y0 + t * (y1 - y0))));
+  }
+  return best;
+}
+
 export const EDGE = 40;
 const FOOT = 14;
 
@@ -130,9 +151,100 @@ export function walkable(x: number, y: number): boolean {
   const onPier = Math.abs(x - pier.x) < 34 && y > pier.y - 40 && y < pier.y + 210;
   if (!onPier && y > coastY(x) - 18) return false;
   if (inPoly(x, y, BAY)) return false;
+  if (distToPolyline(x, y, CREEK) < 46) return false;
   for (const s of SPOTS) {
     if (!s.hw) continue;
     if (x > s.x - s.hw - FOOT && x < s.x + s.hw + FOOT && y > s.y - s.hh - FOOT && y < s.y + FOOT) return false;
   }
   return true;
+}
+
+/** [변경 2] grid pathfinding (A*, 8 directions) so tap-to-walk and map travel go around buildings and water */
+const CELL = 32;
+const GW = Math.ceil(WORLD.w / CELL);
+const GH = Math.ceil(WORLD.h / CELL);
+let grid: Uint8Array | null = null;
+
+function walkGrid(): Uint8Array {
+  if (grid) return grid;
+  grid = new Uint8Array(GW * GH);
+  for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) grid[gy * GW + gx] = walkable(gx * CELL + CELL / 2, gy * CELL + CELL / 2) ? 1 : 0;
+  return grid;
+}
+
+function nearestOpen(gx: number, gy: number): [number, number] | null {
+  const g = walkGrid();
+  for (let r = 0; r < 6; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const x = gx + dx;
+        const y = gy + dy;
+        if (x >= 0 && y >= 0 && x < GW && y < GH && g[y * GW + x]) return [x, y];
+      }
+    }
+  }
+  return null;
+}
+
+/** waypoints from a to b (world coords), ending exactly at b; [] if unreachable */
+export function findPath(a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number }[] {
+  const g = walkGrid();
+  const s0 = nearestOpen(Math.floor(a.x / CELL), Math.floor(a.y / CELL));
+  const t0 = nearestOpen(Math.floor(b.x / CELL), Math.floor(b.y / CELL));
+  if (!s0 || !t0) return [];
+  const start = s0[1] * GW + s0[0];
+  const goal = t0[1] * GW + t0[0];
+  const gScore = new Float32Array(GW * GH).fill(Infinity);
+  const came = new Int32Array(GW * GH).fill(-1);
+  const closed = new Uint8Array(GW * GH);
+  const open: number[] = [start];
+  const f = new Float32Array(GW * GH).fill(Infinity);
+  const h = (i: number) => Math.hypot((i % GW) - t0[0], Math.floor(i / GW) - t0[1]);
+  gScore[start] = 0;
+  f[start] = h(start);
+  while (open.length) {
+    let bi = 0;
+    for (let i = 1; i < open.length; i++) if (f[open[i]] < f[open[bi]]) bi = i;
+    const cur = open.splice(bi, 1)[0];
+    if (cur === goal) break;
+    closed[cur] = 1;
+    const cx = cur % GW;
+    const cy = Math.floor(cur / GW);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+        const ni = ny * GW + nx;
+        if (!g[ni] || closed[ni]) continue;
+        // no corner cutting
+        if (dx && dy && (!g[cy * GW + nx] || !g[ny * GW + cx])) continue;
+        const ng = gScore[cur] + (dx && dy ? Math.SQRT2 : 1);
+        if (ng < gScore[ni]) {
+          gScore[ni] = ng;
+          came[ni] = cur;
+          f[ni] = ng + h(ni);
+          if (!open.includes(ni)) open.push(ni);
+        }
+      }
+    }
+  }
+  if (came[goal] === -1 && goal !== start) return [];
+  const cells: number[] = [];
+  for (let c = goal; c !== -1 && c !== start; c = came[c]) cells.push(c);
+  cells.reverse();
+  // keep only turning points
+  const pts: { x: number; y: number }[] = [];
+  let prevDir = '';
+  cells.forEach((c, i) => {
+    const prev = i === 0 ? start : cells[i - 1];
+    const dir = `${(c % GW) - (prev % GW)},${Math.floor(c / GW) - Math.floor(prev / GW)}`;
+    const p = { x: (c % GW) * CELL + CELL / 2, y: Math.floor(c / GW) * CELL + CELL / 2 };
+    if (dir !== prevDir && i > 0) pts.push({ x: (prev % GW) * CELL + CELL / 2, y: Math.floor(prev / GW) * CELL + CELL / 2 });
+    prevDir = dir;
+    if (i === cells.length - 1) pts.push(p);
+  });
+  pts.push({ x: b.x, y: b.y });
+  return pts;
 }

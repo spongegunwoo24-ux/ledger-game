@@ -29,12 +29,16 @@ import { showFishCard } from '../ui/fishCard';
 import { Hud } from '../ui/Hud';
 import { runMinigame } from '../ui/minigames';
 import { txt } from '../ui/text';
-import { endSegment } from './director';
+import { checkAfternoonClock, endSegment } from './director';
+import { setTownPos } from './Town';
+import { shoreDef, type ShoreDef, type ShoreId } from '../data/shore';
 import { BED_Y, LAYER_BAND, SeaLife, WATER_Y, type Bait, type Swimmer } from './sea/SeaLife';
 
 export interface TrawlData {
   ground: GroundId;
   tutorial?: boolean;
+  /** [변경 2] fishing from the shore in the afternoon (no boat, no net, land clock) */
+  shore?: ShoreId;
 }
 
 type NetPhase = 'up' | 'dropping' | 'down' | 'hauling' | 'stuck';
@@ -98,6 +102,7 @@ export class TrawlScene extends Phaser.Scene {
   private shadow: Phaser.GameObjects.Image | null = null;
   private ending = false;
   private busy = false;
+  private shore: ShoreDef | null = null;
 
   constructor() {
     super('Trawl');
@@ -128,19 +133,24 @@ export class TrawlScene extends Phaser.Scene {
   create() {
     initView(this);
     const s = G.state;
-    if (!G.trip || G.trip.ground !== this.d.ground) {
-      G.trip = { ground: this.d.ground, sailedAt: s.time, hauls: G.trip?.hauls ?? 0, legendSpawned: false, hot: false, tutorial: !!this.d.tutorial };
+    this.shore = this.d.shore ? shoreDef(this.d.shore) : null;
+    if (this.shore) {
+      this.trip = { ground: this.shore.water, sailedAt: s.time, hauls: 0, legendSpawned: !!s.flags[`legendShore_${s.day}`], hot: false, tutorial: false };
+    } else {
+      if (!G.trip || G.trip.ground !== this.d.ground) {
+        G.trip = { ground: this.d.ground, sailedAt: s.time, hauls: G.trip?.hauls ?? 0, legendSpawned: false, hot: false, tutorial: !!this.d.tutorial };
+      }
+      this.trip = G.trip;
     }
-    this.trip = G.trip;
     this.rng = makeRng(hash32(s.seed, 'sea', s.day, this.trip.hauls, Math.floor(s.time)));
     this.weather = conditionsFor(s.day, s.seed).weather;
-    this.alone = s.day >= 45 || !!s.flags.gusGone;
+    this.alone = s.day >= 45 || !!s.flags.gusGone || !!this.shore;
     this.cameras.main.fadeIn(400, 21, 18, 31);
     music(null);
     ambientWaves(true, 0.07);
     this.drawWorld(this.trip.ground);
     new Hud(this, { notebook: false, tracker: false });
-    txt(this, 640, 104, groundDef(this.trip.ground).name, { size: 24, fontFamily: FONT_TITLE, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 6 })
+    txt(this, 640, 104, this.shore ? this.shore.name : groundDef(this.trip.ground).name, { size: 24, fontFamily: FONT_TITLE, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 6 })
       .setOrigin(0.5)
       .setDepth(600);
     this.bubble = new Bubble(this, 760);
@@ -187,22 +197,67 @@ export class TrawlScene extends Phaser.Scene {
     });
     this.input.on('pointerup', () => (this.ptr = null));
     this.buildFishHint();
+    if (this.shore) {
+      this.netBtn.setVisible(false);
+      this.moveBtn.setVisible(false);
+      this.homeBtn.setText('그만하기').setSub('마을로');
+      this.time.delayedCall(450, () => {
+        if (!this.fishing) this.toggleFishing();
+        this.eliSay(this.shore!.desc, 3400);
+      });
+    }
     this.events.once('shutdown', () => {
       this.winch.stop();
       this.heartbeat?.remove();
     });
 
-    if (s.netTorn) this.time.delayedCall(600, () => this.gusSay('그물 찢어진 채로 나왔다. 반은 빠져나갈 거다.', 3600));
+    if (this.shore) {
+      // nothing: the bank is quiet
+    } else if (s.netTorn) this.time.delayedCall(600, () => this.gusSay('그물 찢어진 채로 나왔다. 반은 빠져나갈 거다.', 3600));
     else if (this.trip.tutorial && this.trip.hauls === 0) this.time.delayedCall(500, () => this.gusSay(GUS_TOW.tutorial[0], 4200));
     else if (groundDef(this.trip.ground).snag === 'high') this.time.delayedCall(600, () => this.gusSay(pick(this.rng, GUS_TOW.riskyGround)));
     this.refreshButtons();
     (window as unknown as { __sea?: TrawlScene }).__sea = this;
   }
 
+  /** [변경 2] what Eli stands on when fishing from land; drawn into the boat container (local coords) */
+  private drawShore(id: ShoreId) {
+    const g = this.add.graphics();
+    this.boat.add(g);
+    const ink = PALETTE.ink;
+    if (id === 'pier') {
+      g.fillStyle(SHADE.wood, 1).fillRect(-900, -26, 780, 26);
+      for (let x = -900; x < -120; x += 40) g.lineStyle(2, SHADE.woodDark, 1).lineBetween(x, -26, x, 0);
+      g.lineStyle(4, ink, 1).strokeRect(-900, -26, 780, 26);
+      for (const x of [-860, -640, -420, -180]) g.fillStyle(SHADE.woodDark, 1).fillRect(x, 0, 18, 420);
+    } else if (id === 'breakwater') {
+      for (let i = 0; i < 9; i++) g.fillStyle(i % 2 ? 0x8a8798 : 0x9e9bab, 1).fillEllipse(-880 + i * 90, -8 + (i % 3) * 6, 140, 70);
+      g.lineStyle(3, ink, 0.6).strokeEllipse(-160, -6, 140, 70);
+    } else if (id === 'riverbank') {
+      g.fillStyle(0x7a9a5a, 1).fillRect(-900, -30, 800, 40);
+      g.fillStyle(0x8a6a4a, 1).fillTriangle(-100, -30, -60, 40, -100, 40);
+      for (let i = 0; i < 14; i++) g.lineStyle(4, 0x6fae6a, 1).lineBetween(-880 + i * 55, -30, -890 + i * 55, -80 - (i % 3) * 12);
+    } else {
+      g.fillStyle(PALETTE.sand, 1).fillTriangle(-900, -40, -60, 30, -900, 60);
+      g.fillStyle(PALETTE.sand, 1).fillRect(-900, -40, 840, 40);
+      for (let i = 0; i < 8; i++) g.fillStyle(0xffffff, 0.8).fillCircle(-820 + i * 90, -18, 4);
+    }
+    this.boat.add(addSprite(this, -110, id === 'pier' ? -26 : id === 'breakwater' ? -36 : -32, 'ch_eli', 0.55).setOrigin(0.5, 0.95));
+  }
+
+  private leaveShore() {
+    if (this.ending || this.fight || this.reeling) return;
+    this.ending = true;
+    setTownPos(this.shore!.town);
+    this.cameras.main.fadeOut(300, 21, 18, 31);
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Town', { at: this.shore!.town }));
+  }
+
   private spawnCtx(): SpawnContext {
     const s = G.state;
     return {
-      place: this.trip.ground,
+      place: this.shore ? this.shore.place : this.trip.ground,
+      also: this.shore?.also,
       conditions: conditionsFor(s.day, s.seed),
       time: s.time,
       minutesSinceSail: s.time - this.trip.sailedAt,
@@ -272,6 +327,12 @@ export class TrawlScene extends Phaser.Scene {
     this.lineG = this.add.graphics().setDepth(8);
 
     this.boat = this.add.container(BOAT_X, WATER_Y + 8).setDepth(10);
+    if (this.shore) {
+      this.drawShore(this.shore.id);
+      this.rodG = this.add.graphics().setDepth(11);
+      this.waves = this.add.graphics().setDepth(12);
+      return;
+    }
     const ml = addSprite(this, 0, 0, 'boat_marylou', 0.85).setOrigin(0.5, 200 / 240);
     this.boat.add(ml);
     if (s.flags.graffiti) {
@@ -657,7 +718,9 @@ export class TrawlScene extends Phaser.Scene {
       return;
     }
     if (!this.fishing) {
-      if (!fromMouse) this.toggleNet();
+      if (this.shore) {
+        if (!fromMouse) this.toggleFishing();
+      } else if (!fromMouse) this.toggleNet();
       return;
     }
     const b = this.life.biter();
@@ -909,6 +972,7 @@ export class TrawlScene extends Phaser.Scene {
 
   private startLegendAmbience(f: Swimmer) {
     this.trip.legendSpawned = true;
+    if (this.shore) G.state.flags[`legendShore_${G.state.day}`] = true;
     this.legendFish = f;
     music(null);
     ambientWaves(true, 0.02);
@@ -962,6 +1026,10 @@ export class TrawlScene extends Phaser.Scene {
   }
 
   private goHomeEarly() {
+    if (this.shore) {
+      this.leaveShore();
+      return;
+    }
     if (this.ending || this.net === 'dropping' || this.net === 'hauling') return;
     G.state.time = Math.max(G.state.time, seaEndTime(G.state.day));
     this.endOfMorning(true);
@@ -1006,7 +1074,11 @@ export class TrawlScene extends Phaser.Scene {
     const s = G.state;
     const dt = Math.min(0.05, delta / 1000);
     // the sea clock
-    if (!this.ending) {
+    if (this.shore && !this.ending) {
+      // the land clock; 17:00 at the bank and 19:00 still apply
+      if (!this.dlg.visible && !this.busy && !this.fight && !this.reeling) tickClock(s, delta, 'land');
+      if (!this.fight && !this.reeling && !this.busy && checkAfternoonClock(this, 'Town', { at: this.shore.town })) this.ending = true;
+    } else if (!this.ending) {
       const before = s.time;
       const adv = this.dlg.visible || this.busy ? 0 : tickClock(s, delta, 'sea', seaEndTime(s.day));
       if (this.net === 'down') {
@@ -1021,16 +1093,18 @@ export class TrawlScene extends Phaser.Scene {
 
     // boat bob + tilt
     const wind = this.weather === '바람' ? 1.8 : 1;
-    this.boat.y = WATER_Y + 8 + Math.sin(time / 700) * 3 * wind + fill * 5;
-    this.boat.angle = Math.sin(time / 900) * 1.2 * wind - fill * 3;
+    if (!this.shore) {
+      this.boat.y = WATER_Y + 8 + Math.sin(time / 700) * 3 * wind + fill * 5;
+      this.boat.angle = Math.sin(time / 900) * 1.2 * wind - fill * 3;
+      this.drawNet(time, fill);
+    }
     this.drawWaves(time, wind);
-    this.drawNet(time, fill);
 
     // bait
     if (this.fishing && this.bait && !this.fight && !this.reeling) this.moveBait(dt);
     if (this.fishing && this.bait) this.drawRod(time);
     // living water
-    const flow = this.net === 'down' ? 28 : 5;
+    const flow = this.shore ? (this.shore.id === 'riverbank' || this.shore.id === 'breakwater' ? 12 : 3) : this.net === 'down' ? 28 : 5;
     const netZone = { active: this.net === 'down' && this.netDepth > 0.9, x: NET_MOUTH.x, y: NET_MOUTH.y, r: 70 };
     this.life.update(delta, time, flow, this.fishing && !this.fight && !this.reeling ? this.bait : null, netZone, !!this.fight || this.reeling);
     if (this.fight) this.updateFight(dt);

@@ -56,6 +56,19 @@ export const TUNING = {
     netRepair: 40,
     /** [변경 2] food, power and water, paid every night */
     living: 8,
+    /** [변경 2] Mabel mounts a fish for the wall at home */
+    mount: 40,
+  },
+
+  /** [변경 2] getting around the walkable town */
+  transport: {
+    bike: 120,
+    truck: 600,
+    /** px per real second */
+    walkSpeed: 250,
+    bikeSpeed: 430,
+    /** game minutes for a truck drive to anywhere on the map */
+    truckMinutes: 10,
   },
 
   gusCan: {

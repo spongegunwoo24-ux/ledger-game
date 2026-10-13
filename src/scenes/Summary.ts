@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { eliRank, settleWeekRanking } from '../systems/board';
+import { forecastLines } from '../systems/forecast';
 import { TUNING } from '../config/tuning';
 import { PALETTE, FONT_TITLE, FONT_HAND } from '../art/palette';
 import { music, sfx } from '../audio/sfx';
@@ -28,7 +30,7 @@ export class SummaryScene extends Phaser.Scene {
     this.add.circle(1094, 110, 30, 0x1d2550);
     const weekly = isFriday(s.day);
     const p = this.add.graphics();
-    panel(p, 300, 70, 680, weekly ? 590 : 420, 0xfbf6e8, 20);
+    panel(p, 300, 56, 680, weekly ? 640 : 440, 0xfbf6e8, 20);
     txt(this, 640, 112, `${dayLabel(s.day)} · 밤`, { size: 30, fontFamily: FONT_TITLE }).setOrigin(0.5);
     const rows: [string, string][] = [
       ['오늘 번 돈', `$${s.today.earned.toFixed(2)}`],
@@ -53,7 +55,12 @@ export class SummaryScene extends Phaser.Scene {
         ['쓴 돈', `$${w.spent.toFixed(2)}`],
         ['장부가 훔친 새우', `${w.stolen}마리`],
         ['구한 바다거북', `${w.turtlesSaved}마리`],
+        ['어부 순위', `${eliRank(s)}위`],
       ];
+      if (!s.flags[`rankSettled_${s.day}`]) {
+        s.flags[`rankSettled_${s.day}`] = true;
+        settleWeekRanking(s);
+      }
       wr.forEach(([a, b], i) => {
         txt(this, 360, y + i * 32, a, { size: 20 });
         txt(this, 920, y + i * 32, b, { size: 20, color: '#2d5fa8' }).setOrigin(1, 0);
@@ -63,7 +70,14 @@ export class SummaryScene extends Phaser.Scene {
       txt(this, 640, y, stolenNote, { size: 22, fontFamily: FONT_HAND, color: '#6b6385' }).setOrigin(0.5, 0);
       y += 40;
     }
-    new Button(this, 640, weekly ? 612 : 445, '잠들기', () => this.sleep(), { w: 260, h: 58, fill: PALETTE.lilac, sub: '자동 저장' });
+    // [변경 2] the radio before sleep: tomorrow's forecast
+    const rg = this.add.graphics();
+    panel(rg, 996, 300, 268, 300, 0x3b4a5c, 16);
+    rg.fillStyle(0xc99a6b, 1).fillRoundedRect(1016, 318, 70, 34, 6);
+    for (let i = 0; i < 4; i++) rg.fillStyle(0x3b3355, 1).fillCircle(1030 + i * 14, 335, 3);
+    txt(this, 1100, 335, '라디오 · 내일 예보', { size: 15, color: '#FFE29A' }).setOrigin(0, 0.5);
+    txt(this, 1012, 370, forecastLines(s).join('\n'), { size: 16, color: '#FFFAF0', wordWrap: { width: 236, useAdvancedWrap: true }, lineSpacing: 6 });
+    new Button(this, 640, weekly ? 650 : 455, '잠들기', () => this.sleep(), { w: 260, h: 58, fill: PALETTE.lilac, sub: '자동 저장' });
   }
 
   private sleep() {

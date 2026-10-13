@@ -16,6 +16,9 @@ import { Button, panel } from '../ui/Button';
 import { DialogueBox, Toasts } from '../ui/Dialogue';
 import { Hud } from '../ui/Hud';
 import { questButtons } from '../ui/questButtons';
+import { openBoard } from '../ui/boardView';
+import { Bubble } from '../ui/Bubble';
+import { eliRank, orderLabel, todaysOrders } from '../systems/board';
 import { runMinigame } from '../ui/minigames';
 import { txt } from '../ui/text';
 import { endSegment } from './director';
@@ -72,7 +75,12 @@ export class HarborScene extends Phaser.Scene {
       txt(this, 910, 180 + i * 48, a, { size: 22, fontFamily: FONT_HAND, color: '#F5E3B3' }).setDepth(61);
       txt(this, 1210, 178 + i * 48, b, { size: 28, fontFamily: FONT_HAND, color: '#FFFAF0' }).setOrigin(1, 0).setDepth(61);
     });
-    txt(this, 1060, 330, '분필 글씨는 듀이가 매일 새벽 고쳐 쓴다', { size: 13, color: '#B9B4C7' }).setOrigin(0.5).setDepth(61);
+    const orders = todaysOrders(s);
+    txt(this, 1060, 318, orders.length ? `주문 ${orders.length}건 · 내 순위 ${eliRank(s)}위 — 누르면 크게` : `내 순위 ${eliRank(s)}위 — 누르면 크게`, { size: 15, color: '#FFE29A' })
+      .setOrigin(0.5)
+      .setDepth(61);
+    txt(this, 1060, 342, '분필 글씨는 듀이가 매일 새벽 고쳐 쓴다', { size: 12, color: '#B9B4C7' }).setOrigin(0.5).setDepth(61);
+    this.add.zone(880, 110, 360, 250).setOrigin(0).setDepth(62).setInteractive({ useHandCursor: true }).on('pointerdown', () => !this.busy && openBoard(this, s));
 
     // buttons
     const sunday = isSunday(s.day);
@@ -137,7 +145,8 @@ export class HarborScene extends Phaser.Scene {
     line('바다', `${w} · ${tideOf(s.day, s.seed)} · ${moonOf(s.day)}달. 08:00에는 돌아와야 시장이 열려 있다.`);
     const qs = notebookEntries(s).filter((e) => e.questId);
     line('진행 중인 일', qs.length ? qs.map((e) => `· ${e.questTitle}: ${e.text} (${e.where})`).join('\n') : '· 특별한 부탁은 없다. 새우나 잡자.');
-    line('오늘의 주문', '항구 게시판에 아직 주문이 붙지 않았다.', '#9a96a8');
+    const ords = todaysOrders(s);
+    line('오늘의 주문', ords.length ? ords.map((o) => `· ${o.from}: ${orderLabel(o)} (웃돈 $${o.bonus})`).join('\n') : '항구 게시판에 아직 주문이 붙지 않았다.', ords.length ? '#3B3355' : '#9a96a8');
     c.add(txt(this, 640, 586, '아무 데나 누르면 시작', { size: 15, color: '#9a96a8' }).setOrigin(0.5));
     shade.on('pointerdown', () => {
       releaseClock(token);
@@ -157,6 +166,13 @@ export class HarborScene extends Phaser.Scene {
     z.on('pointerdown', () => !this.busy && this.openBaitShop());
     txt(this, 125, 566, '행크의 미끼 가판대', { size: 15, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 4 }).setOrigin(0.5).setDepth(6);
     s.flags.metHank = true;
+    if (s.flags.hankAskPending && !s.flags.hankAsked) {
+      delete s.flags.hankAskPending;
+      s.flags.hankAsked = true;
+      s.feelings.hank = Math.min(100, s.feelings.hank + 10);
+      s.feelings.fishermen = Math.min(100, s.feelings.fishermen + 5);
+      this.time.delayedCall(900, () => new Bubble(this, 720).say(125, 380, '행크: …어디서 잡았냐?', 4200));
+    }
   }
 
   private openBaitShop() {

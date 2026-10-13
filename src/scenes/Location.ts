@@ -9,7 +9,11 @@ import { initView } from '../core/view';
 import { SMALLTALK } from '../data/dialogue/smalltalk';
 import { locationDef } from '../data/locations';
 import { peopleAt } from '../data/schedules';
-import { dueNow, payDebt } from '../systems/economy';
+import { dueNow, payDebt, spend } from '../systems/economy';
+import { feel } from '../systems/feelings';
+import { owns } from '../core/state';
+import { TUNING } from '../config/tuning';
+import { fishDef } from '../data/fish';
 import { activeQuestIds, currentStep, performStep, stepAvailableNow, stepScene } from '../systems/quests';
 import { Button, panel } from '../ui/Button';
 import { Hud } from '../ui/Hud';
@@ -144,6 +148,24 @@ export class LocationScene extends Phaser.Scene {
       tasks.push({ label: '$100 더 갚기', fill: 0xfff3d6, fn: () => this.prepay(100) });
     }
 
+    // [변경 2] Mabel: bicycle and mounting; Vince: the pickup truck
+    if (this.loc === 'secondhand') {
+      const mabelOk = feel(s, 'mabel') >= 40;
+      if (!owns(s, 'bike')) {
+        tasks.push({
+          label: mabelOk ? `중고 자전거 사기 $${TUNING.transport.bike}` : '중고 자전거 (메이블이 안 판다)',
+          sub: mabelOk ? '마을에서 더 빨리 다닌다' : '메이블과 사이가 좀 나아지면',
+          fill: 0xfff3d6,
+          fn: () => (mabelOk ? this.buy('bike', TUNING.transport.bike, '자전거') : void this.say([{ t: 'say', who: 'mabel', text: '그건 파는 거 아니에요. 아직은.' }])),
+        });
+      }
+      if (s.hold.fish.length || Object.keys(s.items).some((k) => k.startsWith('legend_') && s.items[k] > 0)) {
+        tasks.push({ label: `물고기 박제 맡기기 $${TUNING.costs.mount}`, sub: '집 벽에 걸린다', fill: 0xdbe8ff, fn: () => this.mountMenu() });
+      }
+    }
+    if (this.loc === 'pawn' && !owns(s, 'truck')) {
+      tasks.push({ label: `중고 픽업트럭 사기 $${TUNING.transport.truck}`, sub: '지도에서 누르면 바로 간다', fill: 0xfff3d6, fn: () => this.buy('truck', TUNING.transport.truck, '픽업트럭') });
+    }
     const h = 90 + Math.max(1, tasks.length) * 72;
     const g = this.add.graphics();
     panel(g, 900, 178, 350, h, 0xfffaf0, 18, 0.96);
@@ -189,6 +211,70 @@ export class LocationScene extends Phaser.Scene {
     this.buildSide();
   }
 
+  private buy(id: 'bike' | 'truck', price: number, name: string) {
+    const s = G.state;
+    if (!spend(s, price)) {
+      this.ctx.toasts.show(`$${price}이 없다.`, PALETTE.coral);
+      return;
+    }
+    s.purchases[id] = s.day;
+    sfx('cash');
+    this.hud.refresh();
+    this.buildSide();
+    void this.say(
+      id === 'bike'
+        ? [
+            { t: 'say', who: 'mabel', text: '체인에 기름은 쳐 놨어요. 브레이크는… 발로 하세요.' },
+            { t: 'think', text: `${name}. 바퀴 두 개면 이 마을은 반으로 줄어든다.` },
+          ]
+        : [
+            { t: 'say', who: 'vince', text: '시동은 두 번째에 걸려요. 첫 번째는 인사라고 생각하쇼.' },
+            { t: 'think', text: `${name}. 지도에서 가고 싶은 데를 누르면 된다.` },
+          ],
+    );
+  }
+
+  /** pick a fish from the bag (or a legendary trophy) to have mounted */
+  private mountMenu() {
+    const s = G.state;
+    const c = this.add.container(0, 0).setDepth(1200);
+    const shade = this.add.rectangle(0, 0, 1280, 720, PALETTE.ink, 0.5).setOrigin(0).setInteractive();
+    const g = this.add.graphics();
+    panel(g, 300, 90, 680, 540, 0xfbf6e8, 16);
+    c.add([shade, g, txt(this, 640, 126, `박제 맡기기 · $${TUNING.costs.mount}`, { size: 26, fontFamily: FONT_TITLE }).setOrigin(0.5)]);
+    const opts: { label: string; take: () => { id: string; inches: number } }[] = [];
+    for (const [k, n] of Object.entries(s.items)) {
+      if (!k.startsWith('legend_') || n <= 0) continue;
+      const id = k.slice(7);
+      opts.push({ label: `${fishDef(id)?.name ?? id} (전설)`, take: () => ((s.items[k] -= 1), { id, inches: fishDef(id)?.size[1] ?? 0 }) });
+    }
+    for (const f of [...s.hold.fish].sort((a, b) => b.inches - a.inches).slice(0, 7)) {
+      opts.push({ label: `${fishDef(f.id)?.name ?? f.id} · ${f.inches}인치`, take: () => ((s.hold.fish = s.hold.fish.filter((x) => x.uid !== f.uid)), { id: f.id, inches: f.inches }) });
+    }
+    const close = () => c.destroy();
+    opts.slice(0, 7).forEach((o, i) => {
+      c.add(
+        new Button(this, 640, 190 + i * 58, o.label, () => {
+          if (!spend(s, TUNING.costs.mount)) {
+            this.ctx.toasts.show('돈이 모자란다.', PALETTE.coral);
+            return;
+          }
+          const m = o.take();
+          s.mounted.push({ ...m, day: s.day });
+          sfx('cash');
+          close();
+          this.hud.refresh();
+          this.buildSide();
+          void this.say([
+            { t: 'say', who: 'mabel', text: '사흘이면 돼요. 눈알은 유리로 넣어 줄게요. 진짜보다 반짝여요.' },
+            { t: 'think', text: '집 벽에 걸면 된다. 집에 걸 게 생겼다.' },
+          ]);
+        }, { w: 520, h: 48, size: 18, fill: 0xfffaf0 }),
+      );
+    });
+    c.add(new Button(this, 640, 590, '그만두기', close, { w: 200, h: 44, size: 17, fill: 0xfff3d6 }));
+  }
+
   private prepay(amount: number) {
     const s = G.state;
     const paid = payDebt(s, amount);
@@ -214,7 +300,7 @@ export class LocationScene extends Phaser.Scene {
     if (this.busy || this.leaving) return;
     this.leaving = true;
     this.cameras.main.fadeOut(250, 21, 18, 31);
-    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Town'));
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Town', {}));
   }
 }
 

@@ -240,6 +240,7 @@ export class DeckScene extends Phaser.Scene {
         .setDepth(20 + Math.floor(hy / 10));
       img.setData('baseScale', scale / TEX_SCALE);
       if (item.kind === 'shrimp' && !item.golden && item.id) img.setTint(SHRIMP_TINT[item.id as ShrimpSpecies] ?? 0xffffff);
+      if (item.kind === 'shrimp' && item.id && !G.state.shrimpSeen.includes(item.id)) G.state.shrimpSeen.push(item.id);
       img.setData('idx', i);
       const di: DeckItem = { item, img, home: { x: hx, y: hy }, held: false, claimed: false, done: false };
       this.items.push(di);

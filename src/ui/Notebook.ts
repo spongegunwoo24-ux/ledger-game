@@ -11,11 +11,13 @@ import { CHAR_NAMES } from '../data/names';
 import { feelStateOf, FEEL_ICON } from '../systems/feelings';
 import { notebookEntries, paymentStatusLine } from '../systems/notebook';
 import { questDef } from '../systems/quests';
+import { orderDone, orderLabel, todaysOrders } from '../systems/board';
+import { drawEncyclopedia } from './encyclopedia';
 import { panel } from './Button';
 import { txt } from './text';
 
-type Tab = 'situation' | 'quests' | 'story';
-const TAB_LABEL: Record<Tab, string> = { situation: '지금 상황', quests: '퀘스트', story: '지난 이야기' };
+type Tab = 'situation' | 'quests' | 'story' | 'book';
+const TAB_LABEL: Record<Tab, string> = { situation: '지금 상황', quests: '퀘스트', story: '지난 이야기', book: '도감' };
 
 let lastTab: Tab = 'quests';
 
@@ -166,9 +168,19 @@ function drawTab(scene: Phaser.Scene, body: Phaser.GameObjects.Container, tab: T
     y += 8;
     body.add(txt(scene, 260, y, '오늘의 주문', { size: 18, color: '#b04a52' }));
     y += 28;
-    body.add(txt(scene, 276, y, '항구 게시판에 아직 주문이 붙지 않았다.', { size: 18, color: '#9a96a8' }));
-    return y + 40;
+    const orders = todaysOrders(s);
+    if (!orders.length) {
+      body.add(txt(scene, 276, y, '항구 게시판에 아직 주문이 붙지 않았다.', { size: 18, color: '#9a96a8' }));
+      return y + 40;
+    }
+    for (const o of orders) {
+      const done = orderDone(s, o);
+      body.add(txt(scene, 276, y, `${done ? '✔' : '·'} ${o.from}: ${orderLabel(o)} (웃돈 $${o.bonus})${done ? ' — 납품함' : ' — 아침 시장에서'}`, { size: 18, color: done ? '#2f8f5f' : '#3B3355' }));
+      y += 30;
+    }
+    return y + 10;
   }
+  if (tab === 'book') return drawEncyclopedia(scene, body, s);
   // story
   if (!s.story.length) {
     body.add(txt(scene, 260, 0, '아직 적은 게 없다.', { size: 18, color: '#9a96a8' }));

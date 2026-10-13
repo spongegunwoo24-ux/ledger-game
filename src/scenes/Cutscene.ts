@@ -81,7 +81,7 @@ export class CutsceneScene extends Phaser.Scene {
           this.scene.start('Location', { loc: d.location, skipEvents: false });
           break;
         case 'return':
-          this.scene.start(d.returnTo ?? 'Town', d.returnData);
+          this.scene.start(d.returnTo ?? 'Town', d.returnData ?? {});
           break;
       }
     });

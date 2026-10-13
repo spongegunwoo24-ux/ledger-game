@@ -7,11 +7,16 @@ import { isPaymentDay } from '../core/calendar';
 import { holdClock, releaseClock, tickClock } from '../core/clock';
 import { check } from '../core/conditions';
 import { G } from '../core/game';
+import { owns } from '../core/state';
+import { TUNING } from '../config/tuning';
 import { isHeld, KEY, onKey } from '../core/keys';
 import type { CharId, LocId } from '../core/types';
 import { initView } from '../core/view';
 import { LOCATIONS, locationDef } from '../data/locations';
-import { peopleAt } from '../data/schedules';
+import { afternoonLocation, peopleAt, TOWN_PEOPLE } from '../data/schedules';
+import { FIND_WEIGHT, FINDS, findDef } from '../data/finds';
+import { hash32, makeRng } from '../core/rng';
+import { Toasts } from '../ui/Dialogue';
 import { notebookEntries } from '../systems/notebook';
 import { Button, panel } from '../ui/Button';
 import { addHeadMark, headMarkFor } from '../ui/headIcon';
@@ -19,15 +24,21 @@ import { Hud } from '../ui/Hud';
 import { getSettings } from '../ui/settings';
 import { txt } from '../ui/text';
 import { checkAfternoonClock, endSegment } from './director';
-import { BAY, coastline, doorOf, ROADS, SPOTS, spotOf, walkable, WORLD, type TownSpot } from './town/townMap';
+import { BAY, coastline, coastY, CREEK, doorOf, findPath, ROADS, SPOTS, spotOf, walkable, WORLD, type TownSpot } from './town/townMap';
+import { SHORES, type ShoreId } from '../data/shore';
 
 /** where Eli is in town (the door he comes out of) */
 let currentLoc: LocId = 'dock';
+/** or an exact spot (back from shore fishing) */
+let currentPos: { x: number; y: number } | null = null;
 export function setTownLoc(l: LocId) {
   currentLoc = l;
+  currentPos = null;
+}
+export function setTownPos(p: { x: number; y: number }) {
+  currentPos = { ...p };
 }
 
-const SPEED = 250;
 const VIEW = { w: 1280, h: 720 };
 const JOY = { x: 120, y: 600, r: 62 };
 const MINI = { x: 14, y: 84, w: 240, h: 135 };
@@ -52,12 +63,15 @@ export class TownScene extends Phaser.Scene {
   private eliShadow!: Phaser.GameObjects.Ellipse;
   private pos = { x: 0, y: 0 };
   private scroll = { x: 0, y: 0 };
-  private target: { x: number; y: number; enter?: LocId } | null = null;
+  private target: { x: number; y: number; enter?: LocId; fish?: ShoreId } | null = null;
+  private path: { x: number; y: number }[] = [];
   private joy = { active: false, id: -1, dx: 0, dy: 0 };
   private joyKnob!: Phaser.GameObjects.Arc;
   private walkers: Walker[] = [];
   private prompt!: Button;
   private promptLoc: LocId | null = null;
+  private promptShore: ShoreId | null = null;
+  private promptKey = '';
   private arrows!: Phaser.GameObjects.Graphics;
   private arrowLabels: Phaser.GameObjects.Text[] = [];
   private mini!: Phaser.GameObjects.Graphics;
@@ -65,9 +79,16 @@ export class TownScene extends Phaser.Scene {
   private mapOpen = false;
   private stepT = 0;
   private targets: LocId[] = [];
+  private finds: { key: string; id: string; x: number; y: number; obj: Phaser.GameObjects.Container }[] = [];
+  private gulls: Phaser.GameObjects.Image[] = [];
+  private toasts!: Toasts;
 
   constructor() {
     super('Town');
+  }
+
+  init(d?: { at?: { x: number; y: number } }) {
+    if (d?.at) currentPos = { ...d.at };
   }
 
   create() {
@@ -77,7 +98,12 @@ export class TownScene extends Phaser.Scene {
     this.target = null;
     this.walkers = [];
     this.arrowLabels = [];
+    this.finds = [];
+    this.gulls = [];
     this.joy = { active: false, id: -1, dx: 0, dy: 0 };
+    this.promptKey = '';
+    this.promptLoc = null;
+    this.promptShore = null;
     const s = G.state;
     this.cameras.main.fadeIn(300, 21, 18, 31);
     ambientWaves(true, 0.02);
@@ -96,11 +122,16 @@ export class TownScene extends Phaser.Scene {
     }
     this.trees();
     this.placePeople();
+    this.beachFinds();
+    this.patrol();
+    this.critters();
 
-    // Eli at the door he came out of
+    this.shoreSpots();
+    // Eli at the door he came out of (or where he was fishing)
     const from = spotOf(currentLoc) ?? spotOf('dock')!;
     const d = doorOf(from);
-    this.pos = { x: d.x, y: d.y + (from.style === 'pier' ? 0 : 16) };
+    this.pos = currentPos ? { ...currentPos } : { x: d.x, y: d.y + (from.style === 'pier' ? 0 : 16) };
+    currentPos = null;
     this.eliShadow = this.add.ellipse(0, 0, 44, 14, PALETTE.ink, 0.2);
     this.eli = this.add.image(0, 0, charTexKey('eli')).setOrigin(0.5, 0.95).setScale(0.8 / TEX_SCALE);
     this.objs.add([this.eliShadow, this.eli]);
@@ -155,6 +186,17 @@ export class TownScene extends Phaser.Scene {
     BAY.forEach(([x, y], i) => (i === 0 ? g.moveTo(x, y) : g.lineTo(x, y)));
     g.closePath();
     g.fillPath();
+    // the creek
+    for (const [w, col] of [
+      [104, 0x8fbf7a],
+      [80, 0x7fb8a8],
+    ] as const) {
+      g.lineStyle(w, col, 1);
+      g.beginPath();
+      CREEK.forEach(([x, y], i) => (i === 0 ? g.moveTo(x, y) : g.lineTo(x, y)));
+      g.strokePath();
+      for (const [x, y] of CREEK) g.fillStyle(col, 1).fillCircle(x, y, w / 2);
+    }
     // waves
     for (let i = 0; i < 40; i++) {
       const x = (i * 173) % WORLD.w;
@@ -330,6 +372,139 @@ export class TownScene extends Phaser.Scene {
     this.objs.add(c);
   }
 
+  /** [변경 2] shells and sea glass on the sand; new ones every day */
+  private beachFinds() {
+    const s = G.state;
+    const rng = makeRng(hash32(s.seed, 'finds', s.day));
+    const total = FINDS.reduce((a, f) => a + FIND_WEIGHT[f.rarity], 0);
+    for (let i = 0; i < 6; i++) {
+      const key = `find_${s.day}_${i}`;
+      let roll = rng() * total;
+      const def = FINDS.find((f) => (roll -= FIND_WEIGHT[f.rarity]) < 0) ?? FINDS[0];
+      let x = 0;
+      let y = 0;
+      for (let tries = 0; tries < 20; tries++) {
+        x = 160 + rng() * 2240;
+        y = coastY(x) - 26 - rng() * 36;
+        if (walkable(x, y) && Math.abs(x - 660) > 60) break;
+      }
+      if (s.flags[key]) continue;
+      const g = this.add.graphics();
+      g.fillStyle(def.color, 1).fillCircle(0, 0, 8);
+      g.lineStyle(2, PALETTE.ink, 0.8).strokeCircle(0, 0, 8);
+      g.fillStyle(0xffffff, 0.8).fillCircle(-3, -3, 2.5);
+      const c = this.add.container(x, y, [g]);
+      this.tweens.add({ targets: c, scale: 1.25, duration: 700, yoyo: true, repeat: -1, delay: i * 200 });
+      this.objs.add(c);
+      this.finds.push({ key, id: def.id, x, y, obj: c });
+    }
+  }
+
+  private pickFinds() {
+    const s = G.state;
+    for (const f of this.finds) {
+      if (!f.obj.active || Phaser.Math.Distance.Between(this.pos.x, this.pos.y, f.x, f.y) > 34) continue;
+      s.flags[f.key] = true;
+      const first = !s.finds[f.id];
+      s.finds[f.id] = (s.finds[f.id] ?? 0) + 1;
+      f.obj.destroy();
+      sfx('pop');
+      const def = findDef(f.id)!;
+      this.toasts.show(first ? `주웠다: ${def.name} (도감 NEW!)` : `주웠다: ${def.name}`, first ? PALETTE.butter : PALETTE.mint);
+    }
+  }
+
+  /** Toby walks his patrol: the board, the dock and the sheriff's office, whistling */
+  private patrol() {
+    const s = G.state;
+    if (!TOWN_PEOPLE.includes('toby') || afternoonLocation(s, 'toby') === null) return;
+    const route: LocId[] = ['sheriff', 'board', 'dock', 'board'];
+    const pts = route.map((l) => {
+      const d = doorOf(spotOf(l)!);
+      return { x: d.x + 40, y: d.y + 50 };
+    });
+    // hide the standing Toby; this one walks
+    for (const w of this.walkers) if (w.who === 'toby') w.img.setVisible(false);
+    const img = this.add.image(pts[0].x, pts[0].y, charTexKey('toby')).setOrigin(0.5, 0.95).setScale(0.75 / TEX_SCALE);
+    this.objs.add(img);
+    const notes = txt(this, 0, 0, '♪', { size: 22, color: '#3B3355', stroke: '#FFFAF0', strokeThickness: 4 }).setOrigin(0.5);
+    this.objs.add(notes);
+    this.tweens.add({ targets: notes, alpha: { from: 1, to: 0.2 }, duration: 600, yoyo: true, repeat: -1 });
+    let leg = 0;
+    const walk = () => {
+      if (!img.active) return;
+      const from = pts[leg % pts.length];
+      const to = pts[(leg + 1) % pts.length];
+      leg++;
+      img.setScale((to.x < from.x ? -1 : 1) * Math.abs(img.scaleX), img.scaleY);
+      this.tweens.add({
+        targets: img,
+        x: to.x,
+        y: to.y,
+        duration: (Phaser.Math.Distance.Between(from.x, from.y, to.x, to.y) / 90) * 1000,
+        onUpdate: () => notes.setPosition(img.x + 26, img.y - 120),
+        onComplete: () => this.time.delayedCall(2500, walk),
+      });
+    };
+    notes.setPosition(img.x + 26, img.y - 120);
+    walk();
+  }
+
+  /** small sights: a cat asleep by the diner, gulls on the sand that lift off when Eli comes near */
+  private critters() {
+    const diner = doorOf(spotOf('diner')!);
+    const cat = this.add.graphics();
+    cat.fillStyle(0xffa45c, 1).fillEllipse(0, 0, 40, 20).fillCircle(16, -8, 9);
+    cat.fillTriangle(10, -14, 14, -22, 18, -14).fillTriangle(18, -14, 22, -22, 24, -12);
+    cat.lineStyle(2, PALETTE.ink, 1).strokeEllipse(0, 0, 40, 20);
+    const cc = this.add.container(diner.x + 120, diner.y + 10, [cat]);
+    this.tweens.add({ targets: cc, scaleY: 1.06, duration: 1400, yoyo: true, repeat: -1 });
+    this.objs.add(cc);
+    const s = G.state;
+    const rng = makeRng(hash32(s.seed, 'gulls', s.day));
+    for (let i = 0; i < 5; i++) {
+      const x = 900 + rng() * 1400;
+      const y = coastY(x) - 40;
+      const gull = this.add.image(x, y, 'sc_gull').setScale(0.7);
+      this.objs.add(gull);
+      this.gulls.push(gull);
+    }
+  }
+
+  private scareGulls() {
+    for (const g of this.gulls) {
+      if (!g.active || g.getData('flying')) continue;
+      if (Phaser.Math.Distance.Between(this.pos.x, this.pos.y, g.x, g.y) < 120) {
+        g.setData('flying', true);
+        sfx('whoosh');
+        this.tweens.add({ targets: g, x: g.x + (g.x > this.pos.x ? 400 : -400), y: g.y - 500, duration: 2200, ease: 'Quad.In', onComplete: () => g.destroy() });
+      }
+    }
+  }
+
+  /** [변경 2] land fishing spots: a rod stuck in a bucket */
+  private shoreSpots() {
+    for (const sh of SHORES) {
+      const c = this.add.container(sh.town.x, sh.town.y);
+      const g = this.add.graphics();
+      if (sh.id === 'breakwater') {
+        for (let i = 0; i < 5; i++) g.fillStyle(i % 2 ? 0x8a8798 : 0x9e9bab, 1).fillEllipse(40 + i * 34, -10 - i * 10, 60, 34).lineStyle(2, PALETTE.ink, 0.5).strokeEllipse(40 + i * 34, -10 - i * 10, 60, 34);
+      }
+      g.fillStyle(0x6d7a8a, 1).fillRect(-14, -26, 28, 26).lineStyle(3, PALETTE.ink, 1).strokeRect(-14, -26, 28, 26);
+      g.lineStyle(3, SHADE.woodDark, 1).lineBetween(0, -24, 30, -84);
+      g.lineStyle(1.5, 0xffffff, 0.9).lineBetween(30, -84, 44, -20);
+      c.add(g);
+      c.add(txt(this, 0, 6, `낚시: ${sh.name}`, { size: 15, color: '#2d5fa8', stroke: '#FFFAF0', strokeThickness: 4 }).setOrigin(0.5, 0));
+      const z = this.add.zone(0, -40, 90, 90).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        if (this.leaving) return;
+        this.setTarget({ x: sh.town.x, y: sh.town.y, fish: sh.id });
+      });
+      c.add(z);
+      this.objs.add(c);
+    }
+  }
+
   private placePeople() {
     const s = G.state;
     for (const sp of SPOTS) {
@@ -371,6 +546,7 @@ export class TownScene extends Phaser.Scene {
   private buildUi() {
     const s = G.state;
     new Hud(this);
+    this.toasts = new Toasts(this);
     // joystick
     const base = this.add.circle(JOY.x, JOY.y, JOY.r, PALETTE.ink, 0.18).setDepth(700).setStrokeStyle(4, 0xfffaf0, 0.8);
     base.setInteractive();
@@ -444,7 +620,7 @@ export class TownScene extends Phaser.Scene {
     const mg = this.add.graphics();
     this.drawMap(mg, ox, oy, k, true);
     c.add(mg);
-    c.add(txt(this, 640, oy - 28, '펠리컨 코브 지도 · 장소를 누르면 그리로 걸어간다', { size: 20, fontFamily: FONT_TITLE }).setOrigin(0.5));
+    c.add(txt(this, 640, oy - 28, owns(G.state, 'truck') ? '펠리컨 코브 지도 · 장소를 누르면 트럭으로 간다' : '펠리컨 코브 지도 · 장소를 누르면 그리로 걸어간다', { size: 20, fontFamily: FONT_TITLE }).setOrigin(0.5));
     c.add(txt(this, ox + WORLD.w * k, oy - 28, '닫기 (M / Esc)', { size: 14, color: '#9a96a8' }).setOrigin(1, 0.5));
     const s = G.state;
     for (const sp of SPOTS) {
@@ -462,7 +638,8 @@ export class TownScene extends Phaser.Scene {
       const z = this.add.zone(x, y - (sp.hh * k) / 2, Math.max(70, sp.hw * 2 * k), Math.max(50, sp.hh * k + 30)).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => {
         close();
-        this.walkTo(sp.loc);
+        if (owns(s, 'truck') && sp.loc !== 'home') this.drive(sp.loc);
+        else this.walkTo(sp.loc);
       });
       c.add(z);
     }
@@ -504,12 +681,13 @@ export class TownScene extends Phaser.Scene {
       if (Phaser.Math.Distance.Between(sx, sy, JOY.x, JOY.y) < JOY.r + 40) {
         this.joy = { active: true, id: p.id, dx: 0, dy: 0 };
         this.target = null;
+        this.path = [];
         this.moveJoy(sx, sy);
         return;
       }
       if (over.length) return;
       if (sy < 84) return;
-      this.target = { x: sx + this.scroll.x, y: sy + this.scroll.y };
+      this.setTarget({ x: sx + this.scroll.x, y: sy + this.scroll.y });
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (this.joy.active && p.id === this.joy.id) this.moveJoy(p.worldX, p.worldY);
@@ -540,13 +718,36 @@ export class TownScene extends Phaser.Scene {
     return this.mapOpen || ['notebook', 'inventory', 'dialogueLog'].some((n) => !!this.children.getByName(n));
   }
 
+  /** walk along a path around buildings and water to (x, y) */
+  private setTarget(t: { x: number; y: number; enter?: LocId; fish?: ShoreId }) {
+    this.target = t;
+    this.path = findPath(this.pos, t);
+    if (!this.path.length) this.path = [{ x: t.x, y: t.y }];
+  }
+
+  /** [변경 2] the pickup truck: straight to a door, the clock jumps a little */
+  private drive(loc: LocId) {
+    if (this.leaving) return;
+    const s = G.state;
+    s.time = Math.min(TUNING.clock.dusk - 1, s.time + TUNING.transport.truckMinutes);
+    sfx('creak');
+    this.cameras.main.fadeOut(200, 21, 18, 31);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      const d = doorOf(spotOf(loc)!);
+      this.pos = { x: d.x, y: d.y + 10 };
+      this.updateView();
+      this.cameras.main.fadeIn(200, 21, 18, 31);
+      this.enter(loc);
+    });
+  }
+
   /** Walk to a place's door and go in. */
   walkTo(loc: LocId) {
     if (this.leaving) return;
     const sp = spotOf(loc);
     if (!sp) return;
     const d = doorOf(sp);
-    this.target = { x: d.x, y: d.y + 8, enter: loc };
+    this.setTarget({ x: d.x, y: d.y + 8, enter: loc });
   }
 
   // ---------------- frame ----------------
@@ -556,6 +757,8 @@ export class TownScene extends Phaser.Scene {
     const dt = Math.min(0.05, delta / 1000);
     const blocked = this.overlayOpen() || this.scene.isActive('Pause');
     if (!blocked) {
+      this.pickFinds();
+      this.scareGulls();
       tickClock(s, delta, 'land');
       if (checkAfternoonClock(this, 'Town')) {
         this.leaving = true;
@@ -573,19 +776,32 @@ export class TownScene extends Phaser.Scene {
     if (isHeld(...KEY.right)) vx += 1;
     if (isHeld(...KEY.up)) vy -= 1;
     if (isHeld(...KEY.down)) vy += 1;
-    if (vx || vy) this.target = null;
+    if (vx || vy) {
+      this.target = null;
+      this.path = [];
+    }
     if (!vx && !vy && this.joy.active && Math.hypot(this.joy.dx, this.joy.dy) > 0.15) {
       vx = this.joy.dx;
       vy = this.joy.dy;
     }
     if (!vx && !vy && this.target) {
-      const dx = this.target.x - this.pos.x;
-      const dy = this.target.y - this.pos.y;
-      const d = Math.hypot(dx, dy);
+      let next = this.path[0] ?? this.target;
+      let dx = next.x - this.pos.x;
+      let dy = next.y - this.pos.y;
+      let d = Math.hypot(dx, dy);
+      while (d < 10 && this.path.length > 1) {
+        this.path.shift();
+        next = this.path[0];
+        dx = next.x - this.pos.x;
+        dy = next.y - this.pos.y;
+        d = Math.hypot(dx, dy);
+      }
       if (d < 8) {
-        const enter = this.target.enter;
+        const { enter, fish } = this.target;
         this.target = null;
+        this.path = [];
         if (enter) this.enter(enter);
+        else if (fish) this.goFish(fish);
         return;
       }
       vx = dx / d;
@@ -600,7 +816,7 @@ export class TownScene extends Phaser.Scene {
       this.eli.setAngle(0);
       return;
     }
-    const step = SPEED * dt;
+    const step = (owns(G.state, 'bike') ? TUNING.transport.bikeSpeed : TUNING.transport.walkSpeed) * dt;
     const nx = this.pos.x + vx * step;
     const ny = this.pos.y + vy * step;
     let moved = false;
@@ -645,8 +861,9 @@ export class TownScene extends Phaser.Scene {
     // minimap
     const k = MINI.w / WORLD.w;
     this.miniEli.setPosition(MINI.x + this.pos.x * k, MINI.y + this.pos.y * k);
-    // door prompt
+    // what is in front of Eli: a door or a fishing spot
     let near: LocId | null = null;
+    let nearShore: ShoreId | null = null;
     let best = ENTER_DIST;
     for (const sp of SPOTS) {
       const d = doorOf(sp);
@@ -656,14 +873,27 @@ export class TownScene extends Phaser.Scene {
         near = sp.loc;
       }
     }
-    if (near !== this.promptLoc) {
+    for (const sh of SHORES) {
+      const dist = Phaser.Math.Distance.Between(this.pos.x, this.pos.y, sh.town.x, sh.town.y);
+      if (dist < best) {
+        best = dist;
+        nearShore = sh.id;
+        near = null;
+      }
+    }
+    const key = nearShore ? `shore:${nearShore}` : near ? `loc:${near}` : '';
+    if (key !== this.promptKey) {
+      this.promptKey = key;
       this.promptLoc = near;
-      if (near) {
+      this.promptShore = nearShore;
+      if (nearShore) {
+        this.prompt.setText(`낚시하기: ${SHORES.find((x) => x.id === nearShore)!.name}`);
+      } else if (near) {
         const def = locationDef(near);
         const open = check(G.state, def.requires);
         this.prompt.setText(near === 'home' ? '집에 들어가 하루 마치기' : open ? `들어가기: ${def.name}` : `${def.name}: 잠겨 있다`);
-        this.prompt.setVisible(true);
-      } else this.prompt.setVisible(false);
+      }
+      this.prompt.setVisible(!!key);
     }
     this.drawArrows();
   }
@@ -705,7 +935,22 @@ export class TownScene extends Phaser.Scene {
 
   // ---------------- leaving ----------------
   private enterPrompt() {
-    if (this.promptLoc) this.enter(this.promptLoc);
+    if (this.promptShore) this.goFish(this.promptShore);
+    else if (this.promptLoc) this.enter(this.promptLoc);
+  }
+
+  private goFish(id: ShoreId) {
+    if (this.leaving) return;
+    const s = G.state;
+    if (!Object.values(s.bait).some((n) => n > 0)) {
+      this.prompt.setText('미끼가 없다 (새벽 행크 가판대)');
+      sfx('thud');
+      return;
+    }
+    this.leaving = true;
+    sfx('step');
+    this.cameras.main.fadeOut(250, 21, 18, 31);
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Trawl', { ground: 'oyster', shore: id }));
   }
 
   private enter(loc: LocId) {

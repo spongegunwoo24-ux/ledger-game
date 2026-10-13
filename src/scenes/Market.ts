@@ -12,6 +12,7 @@ import { CHAR_NAMES } from '../data/names';
 import { executeSale, quoteSale, type SaleSelection, type Seller } from '../systems/economy';
 import { TUNING } from '../config/tuning';
 import { openInventory } from '../ui/Inventory';
+import { fillOrder, isAnonymous, orderDone, orderLabel, orderValue, todaysOrders, type Order } from '../systems/board';
 import { questButtons } from '../ui/questButtons';
 import { feel } from '../systems/feelings';
 import { Bubble } from '../ui/Bubble';
@@ -164,10 +165,47 @@ export class MarketScene extends Phaser.Scene {
     );
     const empty = holdIsEmpty(h);
     for (const b of questButtons(this, 'dock', 'morning', 1100, 540, 'Market')) c.add(b);
+    // [변경 2] today's orders from the harbor board
+    const orders = todaysOrders(s);
+    if (orders.length) {
+      const og = this.add.graphics();
+      panel(og, 568, 96, 370, 70 + orders.length * 62, 0xfffaf0, 16, 0.96);
+      c.add(og);
+      c.add(txt(this, 753, 120, '오늘의 주문 (게시판)', { size: 19, fontFamily: FONT_TITLE }).setOrigin(0.5));
+      orders.forEach((o, i) => {
+        const done = orderDone(s, o);
+        const v = orderValue(s, o);
+        const anon = isAnonymous(s, o);
+        const label = done ? `${o.from}: 납품함` : `${o.from} · ${orderLabel(o)}`;
+        c.add(
+          new Button(this, 753, 172 + i * 62, label, () => this.fill(o), {
+            w: 340,
+            h: 52,
+            size: 16,
+            fill: done ? 0xe9e0f7 : PALETTE.mint,
+            disabled: done || v === null,
+            sub: done ? undefined : v === null ? '어창에 없다' : `$${v.toFixed(2)}${anon ? ' · 듀이 편에 익명으로' : ' (웃돈 포함)'}`,
+          }),
+        );
+      });
+    }
     const next = new Button(this, 1100, 640, empty ? '오후로 →' : '남은 건 두고 오후로 →', () => this.leave(), { w: 260, h: 54, size: 19, fill: empty ? PALETTE.coral : 0xfff3d6 });
     c.add(next);
     if (!empty) c.add(txt(this, 1100, 600, '안 판 건 얼음에 둔다. 생선은 하루마다 값이 떨어진다.', { size: 14, color: '#FFFAF0', stroke: '#3B3355', strokeThickness: 3 }).setOrigin(0.5));
     this.panelC = c;
+  }
+
+  private fill(o: Order) {
+    const s = G.state;
+    const anon = isAnonymous(s, o);
+    const got = fillOrder(s, o);
+    if (got <= 0) return;
+    sfx('cash');
+    this.toasts.show(`주문 납품 +$${got.toFixed(2)}`, PALETTE.butter);
+    this.time.delayedCall(300, () => this.hud.refresh());
+    if (anon) this.bubble.say(760, 360, '듀이: 누가 보냈는지는 내가 까먹을게.', 2600);
+    else if (o.who === 'rosa') this.bubble.say(760, 360, '듀이: 로사한테 갖다줄게. 표정은 장담 못 해.', 2600);
+    this.buildPanel();
   }
 
   private openBag() {

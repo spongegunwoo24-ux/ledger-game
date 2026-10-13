@@ -117,6 +117,12 @@ export interface GameState {
   ledgerFed: number;
   /** sorting combo best (for fun stats) */
   bestCombo: number;
+  /** [변경 2] beach finds picked up: id → count */
+  finds: Record<string, number>;
+  /** [변경 2] shrimp species seen on deck (encyclopedia) */
+  shrimpSeen: string[];
+  /** [변경 2] fish mounted at Mabel's, hung on the wall at home */
+  mounted: { id: string; inches: number; day: number }[];
 }
 
 export const FEELING_START: Record<FeelId, number> = {
@@ -194,6 +200,9 @@ export function newGame(seed = Math.floor(Math.random() * 1e9)): GameState {
     story: [],
     ledgerFed: 0,
     bestCombo: 0,
+    finds: {},
+    shrimpSeen: [],
+    mounted: [],
   };
 }
 

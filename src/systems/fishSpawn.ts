@@ -14,9 +14,12 @@ export interface SpawnContext {
   day: number;
   /** Ledger's dive marked this ground today (richer spawns) */
   hot?: boolean;
+  /** [변경 2] land spots also see fish of the water next to them */
+  also?: FishPlace[];
 }
 
-export function placeMatches(f: FishDef, place: FishPlace): boolean {
+export function placeMatches(f: FishDef, place: FishPlace, also: FishPlace[] = []): boolean {
+  if (also.some((p) => placeMatches(f, p))) return true;
   const sea: GroundId[] = ['oyster', 'sandbar', 'wreck', 'river', 'channel', 'gusSpot'];
   return f.places.includes(place) || (f.places.includes('any') && sea.includes(place as GroundId));
 }
@@ -37,7 +40,7 @@ export function condMatches(f: FishDef, c: SpawnContext): boolean {
 }
 
 export function eligibleFish(c: SpawnContext, opts: { includeNetOnly?: boolean } = {}): FishDef[] {
-  return FISH.filter((f) => (opts.includeNetOnly || !f.netOnly) && placeMatches(f, c.place) && condMatches(f, c));
+  return FISH.filter((f) => (opts.includeNetOnly || !f.netOnly) && placeMatches(f, c.place, c.also) && condMatches(f, c));
 }
 
 export function spawnWeight(f: FishDef, c: SpawnContext): number {

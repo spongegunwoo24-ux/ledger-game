@@ -13,6 +13,8 @@ import { GROUND_TIPS, LOGBOOK_ENTRIES } from '../data/logbook';
 import { GROUND_NAMES } from '../data/groundNames';
 import { burnLetter, canOpenLetterTonight, letterLook, lettersAllowedTonight, nextLetterNumber, readLetter } from '../systems/letters';
 import { questButtons } from '../ui/questButtons';
+import { fishTexKey } from '../art/fish';
+import { fishDef } from '../data/fish';
 import { Button, panel } from '../ui/Button';
 import { choose, DialogueBox, Toasts } from '../ui/Dialogue';
 import { Hud } from '../ui/Hud';
@@ -83,6 +85,19 @@ export class HomeScene extends Phaser.Scene {
       hot(1110, 70, 80, 80, '아버지의 항해 일지', () => this.logbook());
     }
     hot(900, 90, 280, 180, '선반', () => this.shelf());
+    // [변경 2] fish mounted at Mabel's
+    s.mounted.slice(0, 3).forEach((m, i) => {
+      const x = 110 + i * 130;
+      const y = 150;
+      const pg = this.add.graphics().setDepth(45);
+      pg.fillStyle(0x8a5a3c, 1).fillRoundedRect(x - 58, y - 30, 116, 64, 10);
+      pg.lineStyle(3, PALETTE.ink, 1).strokeRoundedRect(x - 58, y - 30, 116, 64, 10);
+      pg.fillStyle(0xe2bf8f, 1).fillRect(x - 22, y + 18, 44, 10);
+      const img = this.add.image(x, y - 2, fishTexKey(m.id)).setDepth(46);
+      img.setScale(Math.min(100 / img.width, 44 / img.height));
+      const def = fishDef(m.id);
+      hot(x - 58, y - 30, 116, 64, `${def?.name ?? m.id} · ${m.inches}인치 (${m.day}일째)`, () => undefined);
+    });
 
     questButtons(this, 'home', 'evening', 1120, 580, 'Home', () => !this.busy);
     new Button(this, 1120, 660, '잠자리에 든다', () => this.sleep(), { w: 240, h: 56, fill: PALETTE.lilac, sub: '하루를 마치고 자동 저장' }).setDepth(700);
