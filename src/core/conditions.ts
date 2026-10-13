@@ -18,6 +18,8 @@ export type Cond =
   | { rewritten: string }
   | { lettersReadGte: number }
   | { tip: GroundId }
+  /** [변경 2] Calvin remembers what Eli said (a choice's `remember` id, D05) */
+  | { remembered: string }
   | { any: Cond[] }
   | { not: Cond };
 
@@ -68,6 +70,7 @@ export function check(s: GameState, c: Cond | Cond[] | undefined): boolean {
   if ('rewritten' in c) return s.rewritten.includes(c.rewritten);
   if ('lettersReadGte' in c) return s.lettersRead.length >= c.lettersReadGte;
   if ('tip' in c) return s.tips.includes(c.tip);
+  if ('remembered' in c) return s.calvinMemory.includes(c.remembered);
   if ('any' in c) return c.any.some((x) => check(s, x));
   if ('not' in c) return !check(s, c.not);
   return true;

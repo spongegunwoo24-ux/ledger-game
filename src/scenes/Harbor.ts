@@ -193,13 +193,16 @@ export class HarborScene extends Phaser.Scene {
     c.add(counts);
     const refresh = () => counts.setText(`가진 미끼: ${BAITS.map((b) => `${b.name} ${s.bait[b.id] ?? 0}`).join(' · ')}`);
     refresh();
+    // [변경 2] after Q_HANK_TRAPS Hank sells at half price
+    const baitPrice = (p: number) => (s.flags.hankBaitDiscount ? Math.ceil(p / 2) : p);
+    if (s.flags.hankBaitDiscount) c.add(txt(this, 640, 222, '행크: "…반값. 통발 값이다."', { size: 15, color: '#2f8f5f' }).setOrigin(0.5));
     BAITS.forEach((b, i) => {
       const y = 250 + i * 70;
       c.add(txt(this, 340, y - 14, `${b.name} ×${b.pack}`, { size: 21 }));
       c.add(txt(this, 340, y + 12, b.desc, { size: 14, color: '#6b6385', wordWrap: { width: 440 } }));
       c.add(
-        new Button(this, 880, y, `$${b.price}`, () => {
-          if (!spend(s, b.price)) {
+        new Button(this, 880, y, `$${baitPrice(b.price)}`, () => {
+          if (!spend(s, baitPrice(b.price))) {
             this.toasts.show('돈이 모자라다.', PALETTE.coral);
             return;
           }

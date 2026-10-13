@@ -475,7 +475,7 @@ export class TrawlScene extends Phaser.Scene {
     this.busy = true;
     this.refreshButtons();
     await this.dlgThink('그물이 바닥에 걸렸다. 영감이 있었으면 혼자 풀었을 텐데. 내가 내려가서 풀어야 한다.');
-    await runMinigame(this, 'knot', { points: 5 });
+    await runMinigame(this, 'knot', { points: G.state.flags.knotSkill ? 3 : 5 });
     this.busy = false;
     this.haul(false, true);
   }
@@ -530,6 +530,7 @@ export class TrawlScene extends Phaser.Scene {
       minutes: this.towMinutes,
       conditions: conditionsFor(s.day, s.seed),
       netTornAtStart: s.netTorn && !this.snagged,
+      betterNet: !!s.flags.betterNet,
       snagged: this.snagged,
       snagLoss: this.snagLoss,
       day: s.day,

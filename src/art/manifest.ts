@@ -37,6 +37,8 @@ export const TEXTURE_KEYS: string[] = [
   ...CURIO_IDS.map((c) => `it_${c}`),
   'it_s_bottle_note',
   'it_s_tobacco_tin',
+  'it_s_hank_trap_river',
+  'it_s_hank_trap_oyster',
   'bin_basket_small',
   'bin_basket_medium',
   'bin_basket_large',

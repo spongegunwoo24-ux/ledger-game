@@ -203,7 +203,7 @@ export class LocationScene extends Phaser.Scene {
     if (this.busy) return;
     this.busy = true;
     this.side?.setVisible(false);
-    await runMinigame(this, 'knot', { points: 6 });
+    await runMinigame(this, 'knot', { points: G.state.flags.knotSkill ? 4 : 6 });
     G.state.netTorn = false;
     this.ctx.toasts.show('그물을 다 꿰맸다.');
     this.busy = false;

@@ -89,6 +89,8 @@ export const TUNING = {
     snagHaulLossMin: 0.3,
     snagHaulLossMax: 0.6,
     tornNetYieldMult: 0.55,
+    /** [변경 2] Sal's net from Q_ROSA_ICE */
+    betterNetMult: 1.08,
     goodWinchHaulMult: 1.8,
     // max items that can appear on deck from one tow (performance + sorting time)
     maxItemsPerTow: 70,

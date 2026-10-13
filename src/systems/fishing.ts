@@ -52,6 +52,8 @@ export interface HaulOptions {
   rng: Rng;
   /** story item ids already obtained (never duplicated) */
   storyTaken: string[];
+  /** [변경 2] Sal's net (Q_ROSA_ICE): a little more shrimp */
+  betterNet?: boolean;
   /** [변경 2] story items to put in this tow (from storyCatchFor) */
   storyItems?: string[];
   /** fish that actually swam into the net (sea scene); generated from the spawn table when omitted */
@@ -84,6 +86,7 @@ export function rollHaul(o: HaulOptions): CatchItem[] {
   const fill = towCurve(o.minutes);
   let mult = conditionMultiplier(o.ground, o.conditions) * range(rng, 0.9, 1.1) * (o.hot ? 1.15 : 1);
   if (o.netTornAtStart) mult *= TUNING.trawl.tornNetYieldMult;
+  if (o.betterNet) mult *= TUNING.trawl.betterNetMult;
   if (o.snagged) mult *= 1 - o.snagLoss;
   const keep = o.snagged ? 1 - o.snagLoss : 1;
 

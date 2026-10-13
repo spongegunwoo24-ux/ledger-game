@@ -276,6 +276,15 @@ export function generateItems(scene: Phaser.Scene): void {
     p.poly([6, 12, 40, 8, 40, 14, 6, 18], 0xd9b45a, { lw: 1.6 });
     p.line(14, 24, 32, 21, 1.4, 0x7a2a25);
   });
+  // [변경 2] Hank's crab traps (Q_HANK_TRAPS)
+  const trap = (p: Pen, tag: number) => {
+    p.rrect(6, 10, 40, 30, 4, 0x9aa8a0, { alpha: 0.9 });
+    for (let i = 0; i < 5; i++) p.line(10 + i * 8, 12, 10 + i * 8, 38, 1.2, 0x5f6b66);
+    for (let i = 0; i < 3; i++) p.line(8, 18 + i * 8, 44, 18 + i * 8, 1.2, 0x5f6b66);
+    p.rrect(34, 4, 12, 9, 2, tag, { lw: 1.2 });
+  };
+  bake(scene, 'it_s_hank_trap_river', 52, 46, (p) => trap(p, 0xff8b94));
+  bake(scene, 'it_s_hank_trap_oyster', 52, 46, (p) => trap(p, 0xffe29a));
   // bins
   bake(scene, 'bin_basket_small', 100, 76, (p) => basket(p, '소', 0xfff3d6));
   bake(scene, 'bin_basket_medium', 100, 76, (p) => basket(p, '중', 0xffe29a));
