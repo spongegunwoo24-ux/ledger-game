@@ -901,7 +901,8 @@ export class TownScene extends Phaser.Scene {
       } else if (near) {
         const def = locationDef(near);
         const open = check(G.state, def.requires);
-        this.prompt.setText(near === 'home' ? '집에 들어가 하루 마치기' : open ? `들어가기: ${def.name}` : `${def.name}: 잠겨 있다`);
+        const closed = near === 'diner' && G.state.day === 27;
+        this.prompt.setText(near === 'home' ? '집에 들어가 하루 마치기' : closed ? `${def.name}: 오늘은 쉽니다` : open ? `들어가기: ${def.name}` : `${def.name}: 잠겨 있다`);
       }
       this.prompt.setVisible(!!key);
     }
@@ -971,6 +972,12 @@ export class TownScene extends Phaser.Scene {
       return;
     }
     const def = locationDef(loc);
+    if (loc === 'diner' && s.day === 27) {
+      // Sal's day (D14): closed, a handwritten sign on the door
+      sfx('thud');
+      this.toasts.show('식당 문에 손글씨: "오늘은 쉽니다."', PALETTE.lilac);
+      return;
+    }
     if (!check(s, def.requires)) {
       sfx('thud');
       return;

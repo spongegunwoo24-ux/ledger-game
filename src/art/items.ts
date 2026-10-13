@@ -335,4 +335,28 @@ export function generateItems(scene: Phaser.Scene): void {
     p.rrect(4, 4, 112, 22, 3, 0x9c6f4a);
     p.rrect(10, 8, 100, 14, 2, 0xd9b45a, { lw: 1.2 });
   });
+  // [변경 2] week 4 quest props
+  const parcel = (p: Pen, x: number, y: number, w: number, h: number) => {
+    p.rrect(x, y, w, h, 3, 0xc9a07a);
+    p.line(x + w / 2, y, x + w / 2, y + h, 2, 0x7a5236);
+    p.line(x, y + h / 2, x + w, y + h / 2, 2, 0x7a5236);
+    p.rrect(x + 6, y + 6, w / 2 - 10, h / 2 - 10, 1, 0xfbf1d9, { lw: 1 });
+  };
+  bake(scene, 'prop_parcel', 70, 56, (p) => parcel(p, 6, 8, 58, 42));
+  bake(scene, 'prop_parcels', 120, 90, (p) => {
+    parcel(p, 8, 44, 60, 40);
+    parcel(p, 58, 48, 56, 36);
+    parcel(p, 30, 8, 58, 40);
+  });
+  bake(scene, 'prop_pharmacy_ledger', 110, 80, (p) => {
+    p.rrect(4, 6, 102, 68, 4, 0x7a3b3b);
+    p.rect(10, 10, 44, 60, 0xfbf1d9, { lw: 1 });
+    p.rect(56, 10, 44, 60, 0xfbf1d9, { lw: 1 });
+    for (let i = 0; i < 6; i++) p.line(14, 18 + i * 8, 50, 18 + i * 8, 1, 0x6b6385, 0.6);
+  });
+  bake(scene, 'prop_daniel_notebook', 64, 86, (p) => {
+    p.rrect(6, 6, 52, 76, 4, 0x3b3355);
+    p.rect(6, 40, 52, 6, 0x9a96a8, { outline: false });
+    p.rrect(18, 16, 28, 12, 2, 0xfbf1d9, { lw: 1.2 });
+  });
 }
