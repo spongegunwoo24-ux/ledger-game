@@ -1,6 +1,8 @@
 # BUILD PROMPT — 「장부 (Ledger)」
 
-> **변경 요청 1 (2026-10-12) 반영본.** 의뢰인의 변경 요청이 원문보다 우선합니다. 바뀐 곳은 `[변경 1]`로 표시했고, 결정 내용은 `docs/DECISIONS.md`에 있습니다.
+> **변경 요청 1 (2026-10-12)·변경 요청 2 (2026-10-13) 반영본.** 의뢰인의 변경 요청이 원문보다 우선합니다. 바뀐 곳은 `[변경 1]`, `[변경 2]`로 표시했고, 결정 내용은 `docs/DECISIONS.md`에 있습니다.
+>
+> 변경 요청 2 (의뢰인 말 그대로의 요지): ① 한글 입력 상태에서 Space·F가 안 먹고 낚시하는 법을 모르겠다 → 고침. ② 마을은 직접 조이스틱으로 움직이고 지도로 볼 수 있어야 한다. ③ 돈을 너무 잘 버는 느낌, 미끼 등이 너무 싸다 → 경제 재정리. ④ 물고기는 컬렉션처럼 모아 두는 인벤토리에서 골라 판다. 새우 소·중·대를 따로 파는 건 빼라. ⑤ M2 시작.
 
 **Always reply to the human in Korean (한국어로만 대답하세요).**
 
@@ -241,7 +243,9 @@ Optional but nice: WebAudio-synthesized SFX (winch whirr, net splash, shrimp plo
 - Transport: walking → used bicycle $120 → pickup truck $600 (fast travel between parking spots).
 - At 19:00 Eli heads home naturally (auto-walk if outside, no penalty).
 - This replaces "2 afternoon slots / 3 with the truck" and the quests' "afternoon slot" wording everywhere in this document.
-- Until M2 ships, the M1 node map is kept as an interim: the clock runs on land, travel between nodes costs a little time, and 19:00 ends the afternoon.
+- `[변경 2]` Implemented in M2: Eli moves with arrow keys/WASD, an **on-screen joystick** (bottom left, mouse or touch), or by tapping the ground (A* pathfinding around buildings and water). A **minimap** (top left) and a **full town map** (M key / tap the minimap) show places, people, quest marks and Eli; tapping a place on the map walks there (with the truck: drives there, +10 game minutes). Quest destinations get a yellow "!" over the building and an edge arrow when off-screen. Doors and fishing spots show a "들어가기 / 낚시하기 (Space)" prompt.
+- `[변경 2]` Land fishing spots: 부두 끝, 등대 방파제, 강둑 (a creek on the west side), 해변. They open the same fishing view without boat or net; the land clock runs.
+- `[변경 2]` Small sights: Toby walks his patrol (sheriff → board → dock) whistling, a cat sleeps by the diner, gulls lift off when Eli comes near, the church bell rings at noon, and 6 beach finds (shells, sea glass…) wash up each day.
 
 ### 5.3 Cast (display name — role — public face — hidden truth — voice)
 
@@ -400,9 +404,9 @@ All numbers below live in `config/tuning.ts` and are initial tuning values. Keep
 | --- | --- | --- |
 | Payment due Friday | $250 | $500 each |
 
-The player may prepay any amount at the bank on any afternoon (costs a slot).
+The player may prepay any amount at the bank on any afternoon.
 
-**Prices (cannery truck; market and Rosa pay ×2)**
+**Prices (cannery truck; `[변경 2]` market ×1.5, Rosa ×1.6)**
 
 | Item | Price |
 | --- | --- |
@@ -412,17 +416,21 @@ The player may prepay any amount at the bank on any afternoon (costs a slot).
 | 게 | $1.5 each |
 | curiosities | not sold (shelf) — pawnshop buys some for $5–15 |
 
-- Fuel: $5 per trip. Net repair: $40. `[변경 1]` Fish caught by net or rod sell to the cannery truck at the fish-table price (8.14).
+- Fuel: `[변경 2]` **$12** per trip (was $5). Net repair: $40. `[변경 1]` Fish caught by net or rod sell to the cannery truck at the fish-table price (8.14).
+- `[변경 2]` **Living costs:** $8 every night (food, power, water), shown on the night summary.
+- `[변경 2]` **Bait** (Hank's stand): shrimp ×8 $6, live pinfish ×3 $12, crab ×4 $9, lure $25 (reusable).
+- `[변경 2]` **Selling:** shrimp (all sizes), crabs and golden shrimp are sold together in one go. **Fish are kept like a collection** in the bag (I / "가방"): one picture card per fish with species, size, price and days on ice; at the morning market the player picks cards and sells them. Each day on ice takes 25% off a fish's price (floor 50%). Legendary fish are trophies, never sold (mount them at Mabel's).
+- `[변경 2]` Shrimp yield per deck item 0.25 lb; sorting combo +0.6% per step (max +15%), freshness +5% / +2%.
 - **Cannery oversupply:** after 450 lb sold to the cannery in one week, cannery prices drop ×0.8 for the rest of that week.
-- **Average target:** an average player earns ~$95–110/day in weeks 1–5 at the cannery, enough to pay $500/week with ~$150–250 surplus. A great player who opens the fish market (week 6+) can pay off the full debt around week 7–8.
+- **Average target `[변경 2]`:** after fuel, bait and living costs an average player pays $500 every Friday with only a thin cushion ($100–350 left after paying, never more than about one week's payment). A great player pays off in week 6–8 (Days 42–45 in the simulation). A poor player holds on for at least four weeks and is likely repossessed later unless he improves.
 
 **Sellers**
 
 | Seller | Price | Availability |
 | --- | --- | --- |
 | 통조림 공장 트럭 (듀이) | base | every morning at the dock |
-| 마을 어시장 | ×2 | refuses Eli until fishermen's average feeling ≥ 40 AND week ≥ 6, OR after the hearing |
-| 로사의 식당 납품 | ×2 (max 30 lb/day) + Rosa says a line | Rosa ≥ 60 |
+| 마을 어시장 | ×1.5 `[변경 2]` | refuses Eli until fishermen's average feeling ≥ 40 AND week ≥ 6, OR after the hearing |
+| 로사의 식당 납품 | ×1.6 `[변경 2]` (shrimp only, max 30 lb/day) + Rosa says a line | Rosa ≥ 60 |
 
 **Payment rules `[변경 1]` (replace the old safety nets and "3 consecutive $0 Fridays")**
 
@@ -457,7 +465,9 @@ Money buys life, never power. No purchase skips a story beat.
 | Boat (comfort) | 좋은 윈치 | $300 | faster haul |
 | Boat (comfort) | 분류대 | $200 | auto-sorts ~30% of items (for players who find sorting tedious) |
 | Boat (comfort) | 얼음 상자 | $150 | allows one extra tow per trip |
-| Time | 중고 픽업트럭 | $600 | **3 afternoon slots** instead of 2 |
+| Time | 자전거 `[변경 2]` (메이블, Mabel ≥ 40) | $120 | walk faster in town (×1.7) |
+| Time | 중고 픽업트럭 `[변경 2]` (빈스 전당포) | $600 | fast travel: tap a place on the town map, +10 game minutes |
+| Hobby | 박제 `[변경 2]` (메이블) | $40 each | a fish from the bag (or a legendary trophy) hung on the wall at home |
 | Time | 부두 꼬마 고용 (메이지; after her quest) | $10/day | sells your catch for you; skip the selling step |
 | Time | 게 통발 | $40 each (max 4) | ~$6/day each, collected automatically |
 | Town (anonymous) | 성당 지붕 / 부두 보수 / 등대 불 / 축제 후원(5주만) | $300 / $400 / $250 / $100 | town visibly improves; small town-wide feeling +2 to +4; diner gossip "익명 기부자 누굴까"; revealed by Father Matthew on Day 62 if any donation was made (big warm scene) |
@@ -706,7 +716,9 @@ Applied at night, visible next morning:
 2. Haul reveal grades (8.2). — now
 3. Sorting combo and freshness (8.3). — now
 4. (M2) Harbor board: today's orders (Rosa's diner, the cannery, townspeople) and this week's fishermen ranking. Eli's name starts at the bottom, scribbled out. Climbing the ranking changes the fishermen's attitude; at #1 Hank speaks to him for the first time: "…어디서 잡았냐?". Orders from people who hate Eli can be filled anonymously.
+   `[변경 2]` Built: 2–3 orders a day from Day 2 (Rosa always wants shrimp; often the cannery wants crabs; one townsperson wants a fish), filled at the morning market from the hold, paying the goods' price + a bonus ($5–8) and +3 feeling (none if anonymous: feeling < 20, delivered by Dewey). Ranking = pounds of shrimp this week against six fishermen — and **Calvin Shaw, always near the bottom** (he is out at "his place" every dawn and never seems to catch much there). Eli's name is scribbled out ("살인마 아들") until fishermen ≥ 40 or a top-3 week; top 3 at Friday night → fishermen +3; #1 → next dawn Hank's line (+10 Hank, +5 fishermen).
 5. (M2) Encyclopedia and tomorrow's forecast: 36 fish + shrimp + curiosities + beach finds. Before sleep the radio forecasts tomorrow's weather, tide, moon and good fish ("내일은 보름에 썰물. 레드피시가 굴 양식장에 몰립니다.").
+   `[변경 2]` Built: notebook tab **도감** (silhouettes for unknown entries; count and best size for fish), and a radio panel on the night summary naming one non-legendary fish whose tide/moon/weather condition matches tomorrow.
 
 ---
 
@@ -946,7 +958,7 @@ Work in this order. Do not start a milestone until the previous one passes its c
 ### M3 — Economy and spending
 - [ ] All shop items (8.5) working with effects. House and boat decoration persists.
 - [ ] Payment rules (8.4), early payoff scene, repossession ending.
-- [ ] **Economy simulation test**: poor / average / great profiles over 63 days. Assert `[변경 1]`: average pays every Friday on time with the net plus moderate fishing; great reaches $0 debt in week 6–7; poor survives using the warning week and Gus's coffee can. Adjust tuning until true and log changes.
+- [x] **Economy simulation test**: poor / average / great profiles over 63 days. Assert `[변경 2]`: average pays every Friday on time but keeps less than $700 after any payment; great reaches $0 debt in week 6–8; poor pays week 1 and holds on for at least four weeks. Adjust tuning until true and log changes.
 
 ### M4 — The cracks and the investigation
 - [ ] Case wall with all statements/evidence (8.11).
