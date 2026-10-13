@@ -191,7 +191,7 @@ export const Q_CALVIN_KNOTS: QuestDef = {
               { text: '"휘파람 잘 부네요."', then: [{ t: 'say', who: 'toby', text: '헤헤, 그래요? 선배님한테 배운 곡이에요!' }] },
             ],
           },
-          { t: 'say', who: 'toby', text: '경찰 학교 막 나왔을 때 선배님이 순찰 같이 돌면서 불어 주셨어요. 걸을 때 박자 맞추기 좋다고요.' },
+          { t: 'say', who: 'toby', text: '제가 막 들어왔을 때 선배님이 순찰 같이 돌면서 불어 주셨어요. 걸을 때 박자 맞추기 좋다고요.' },
           { t: 'say', who: 'toby', text: '근데 선배님은 사람들 앞에선 잘 안 부세요. 쑥스러우신가 봐요. 저만 알아요. 헤헤.' },
           { t: 'effect', effects: [{ evidence: 'E_WHISTLE_TEACHER' }, { item: 'knotBoard', n: -1 }] },
           { t: 'think', text: '캘빈 씨가 휘파람을. 잘 상상이 안 간다.' },
