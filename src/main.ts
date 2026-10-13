@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { SCENES } from './scenes';
 import { computeR, H, TEST_MODE, W } from './core/view';
+import { ALL_EVENTS } from './data/events';
+import { QUESTS } from './data/quests';
 import { notebookEntries } from './systems/notebook';
 import { installDebug } from './ui/debug';
 import { G } from './core/game';
@@ -36,7 +38,18 @@ async function start() {
   (window as unknown as { __game: Phaser.Game; __G: typeof G }).__game = game;
   (window as unknown as { __G: typeof G }).__G = G;
   installDebug(game);
-  if (TEST_MODE) (window as unknown as { __nb: () => unknown }).__nb = () => notebookEntries(G.state);
+  if (TEST_MODE) {
+    const w = window as unknown as { __nb: () => unknown; __content: unknown; __missing: string[] };
+    w.__nb = () => notebookEntries(G.state);
+    // content smoke tests: every event and quest step, and any image key that has no texture
+    w.__content = { events: ALL_EVENTS.map((e) => ({ id: e.id, trigger: e.trigger })), quests: QUESTS.map((q) => ({ id: q.id, steps: q.steps.map((st) => st.scenes.length) })) };
+    w.__missing = [];
+    const orig = Phaser.GameObjects.GameObjectFactory.prototype.image;
+    Phaser.GameObjects.GameObjectFactory.prototype.image = function (this: Phaser.GameObjects.GameObjectFactory, x: number, y: number, key: string | Phaser.Textures.Texture, frame?: string | number) {
+      if (typeof key === 'string' && !this.scene.textures.exists(key) && !w.__missing.includes(key)) w.__missing.push(key);
+      return orig.call(this, x, y, key, frame);
+    };
+  }
   // Late font slices: redraw every Text object once more glyphs arrive.
   const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
   fonts?.addEventListener('loadingdone', () => {
