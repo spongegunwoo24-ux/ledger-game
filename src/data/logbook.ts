@@ -185,7 +185,7 @@ export const LOGBOOK_ENTRIES: Record<string, LogbookEntry> = {
   },
   LB_E_SAL_SEA: {
     hand: 'eli',
-    text: '재판 기록: 샐 모레티가 사라진 밤, 아버지 배는 바다에 있었다.',
+    text: '재판 기록: 샐 씨가 사라진 밤, 아버지 배는 바다에 있었다.',
     unlock: [{ flag: 'trialFile' }, days(8)],
     strikeWhen: { evidence: 'E_LOGBOOK_DOCKED' },
   },

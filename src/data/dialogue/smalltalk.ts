@@ -256,7 +256,7 @@ export const SMALLTALK: Partial<Record<CharId, TalkLine[]>> = {
     { text: '(시계를 보며) 노인분들 약 배달이 밀려서요. 요즘은 손이 모자라서…', when: feelAtLeast('pike', 40) },
     { text: '(손을 비비며) 날씨가… 덥네요. 아니, 습하네요. 습한 거죠.' },
     { text: '(안경을 고쳐 쓰며) 새우는 단백질이 좋아요. 콜레스테롤은, 음, 논란이 있고요. 적당히요.', when: feelAtLeast('pike', 40) },
-    { text: '(손목시계를 두 번 보며) 이 시계는 2분 빨라요. 일부러요. 늦는 것보다는 낫잖아요. 대체로는요.', when: feelAtLeast('pike', 40) },
+    { text: '(벽시계와 자기 시계를 번갈아 보며) 제 시계는 2분 빨라요. 일부러요. 늦는 것보다는 낫잖아요. 대체로는요.', when: feelAtLeast('pike', 40) },
     { text: '(소독약 냄새를 풍기며) 바늘에 찔리면 바로 오세요. 상처가 작아도 감염이, 아니, 겁주려는 건 아니고요.', when: feelAtLeast('pike', 40) },
     { text: '(창밖 약국 쪽을 보다가) 약국이요? 아, 저건… 정리할 시간이 없어서요. 언젠가는요.', when: feelAtLeast('pike', 40) },
     { text: '(약 상자를 내려다보며) 혹시 오후에 시간 되시면, 아니, 안 되셔도 괜찮고요. 그냥 여쭤본 거예요.', when: [days(22, 24), notStarted('Q_PIKE_ERRANDS')], weight: 2 },
